@@ -1,0 +1,413 @@
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import type { DataColumn } from "@/lib/data-catalog";
+import { cn } from "@/lib/utils";
+
+type Row = Record<string, unknown> & { id?: number };
+
+const PAGE_SIZES = [10, 25, 50, 100];
+
+const NUMERIC = new Set(["decimal", "int", "bigint"]);
+
+function toNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(String(value).replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatCell(value: unknown, type: DataColumn["type"]) {
+  if (value === null || value === undefined || value === "") return "";
+  if (NUMERIC.has(type)) {
+    const n = toNumber(value);
+    return n === null ? String(value) : n.toLocaleString("id-ID");
+  }
+  return String(value);
+}
+
+export function DataTableView({
+  table,
+  columns,
+  title,
+  showDelta,
+  canEdit = false,
+  canAdd = canEdit,
+  onChanged,
+  headerOverrides,
+}: {
+  table: string;
+  columns: DataColumn[];
+  title?: string;
+  showDelta?: boolean;
+  canEdit?: boolean;
+  canAdd?: boolean;
+  onChanged?: () => void;
+  headerOverrides?: Record<string, string>;
+}) {
+  const [rows, setRows] = useState<Row[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+  const [term, setTerm] = useState("");
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<{ col: string; asc: boolean } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tick, setTick] = useState(0);
+  const [editing, setEditing] = useState<Row | null>(null);
+  const [deleting, setDeleting] = useState<Row | null>(null);
+
+  const searchColumns = useMemo(
+    () => columns.filter((c) => c.type === "string").slice(0, 4).map((c) => c.field),
+    [columns],
+  );
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setQuery(term);
+      setPage(0);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [term]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      let req = supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .from(table as any)
+        .select("*", { count: "exact" })
+        .range(page * pageSize, page * pageSize + pageSize - 1);
+      if (query && searchColumns.length) {
+        req = req.or(searchColumns.map((c) => `${c}.ilike.%${query}%`).join(","));
+      }
+      if (sort) req = req.order(sort.col, { ascending: sort.asc });
+      else req = req.order("id", { ascending: true });
+      const { data, error, count } = await req;
+      if (cancelled) return;
+      if (error) toast.error("Gagal memuat data");
+      else {
+        setRows((data ?? []) as unknown as Row[]);
+        setTotal(count ?? 0);
+      }
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [table, page, pageSize, query, sort, searchColumns, tick]);
+
+  const refresh = () => {
+    setTick((t) => t + 1);
+    onChanged?.();
+  };
+
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const from = total === 0 ? 0 : page * pageSize + 1;
+  const to = Math.min(total, page * pageSize + rows.length);
+
+  const save = async () => {
+    if (!editing) return;
+    const payload: Record<string, unknown> = {};
+    for (const c of columns) payload[c.field] = editing[c.field] ?? null;
+    const isNew = editing["id"] === undefined;
+    const { error } = isNew
+      ? await supabase
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .from(table as any)
+          .insert(payload as never)
+      : await supabase
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .from(table as any)
+          .update(payload)
+          .eq("id", editing["id"] as number);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success(isNew ? "Data ditambahkan." : "Data diperbarui.");
+    setEditing(null);
+    refresh();
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    const { error } = await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .from(table as any)
+      .delete()
+      .eq("id", deleting["id"] as number);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("Data dihapus.");
+    setDeleting(null);
+    refresh();
+  };
+
+  return (
+    <div className="space-y-4">
+      {title && <h2 className="text-xl font-bold tracking-tight">{title}</h2>}
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="relative w-full max-w-xs">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+            placeholder="Search..."
+            className="pl-9"
+          />
+        </div>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          {canAdd && (
+            <Button onClick={() => setEditing({} as Row)}>
+              <Plus className="mr-2 size-4" /> Add Data
+            </Button>
+          )}
+          <span>Show</span>
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(0);
+            }}
+            className="h-9 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+          >
+            {PAGE_SIZES.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="card-elevated overflow-x-auto">
+        {loading ? (
+          <div className="space-y-2 p-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Skeleton key={i} className="h-6 w-full" />
+            ))}
+          </div>
+        ) : rows.length === 0 ? (
+          <p className="p-8 text-center text-sm text-muted-foreground">Tidak ada data.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-muted/60">
+              <tr>
+                <th className="whitespace-nowrap px-4 py-3 text-left font-semibold">NO</th>
+                {columns.map((c) => (
+                  <th key={c.field} className="whitespace-nowrap px-4 py-3 text-left font-semibold">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1"
+                      onClick={() =>
+                        setSort((s) =>
+                          s && s.col === c.field
+                            ? { col: c.field, asc: !s.asc }
+                            : { col: c.field, asc: true },
+                        )
+                      }
+                    >
+                      {headerOverrides?.[c.field] ?? c.label}
+                      <ChevronsUpDown className="size-3.5 text-muted-foreground" />
+                    </button>
+                  </th>
+                ))}
+                {showDelta && (
+                  <th className="whitespace-nowrap px-4 py-3 text-left font-semibold">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1"
+                      title="Urutkan DELTA"
+                      onClick={() =>
+                        setSort((s) =>
+                          s && s.col === "delta"
+                            ? { col: "delta", asc: !s.asc }
+                            : { col: "delta", asc: false },
+                        )
+                      }
+                    >
+                      DELTA
+                      {sort?.col === "delta" ? (
+                        sort.asc ? (
+                          <ChevronUp className="size-3.5 text-primary" />
+                        ) : (
+                          <ChevronDown className="size-3.5 text-primary" />
+                        )
+                      ) : (
+                        <ChevronsUpDown className="size-3.5 text-muted-foreground" />
+                      )}
+                    </button>
+                  </th>
+                )}
+                {canEdit && (
+                  <th className="whitespace-nowrap px-4 py-3 text-right font-semibold">Actions</th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => {
+                const delta = showDelta
+                  ? (toNumber(r["tgl2"]) ?? 0) - (toNumber(r["tgl1"]) ?? 0)
+                  : 0;
+                return (
+                  <tr key={i} className="border-t transition-colors hover:bg-muted/40">
+                    <td className="px-4 py-3 text-muted-foreground">{page * pageSize + i + 1}</td>
+                    {columns.map((c) => (
+                      <td
+                        key={c.field}
+                        className={cn(
+                          "whitespace-nowrap px-4 py-3",
+                          NUMERIC.has(c.type) && "text-right tabular-nums",
+                        )}
+                      >
+                        {formatCell(r[c.field], c.type)}
+                      </td>
+                    ))}
+                    {showDelta && (
+                      <td
+                        className={cn(
+                          "whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums",
+                          delta < 0 ? "text-destructive" : "text-success",
+                        )}
+                      >
+                        {delta.toLocaleString("id-ID")}
+                      </td>
+                    )}
+                    {canEdit && (
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Edit"
+                            onClick={() => setEditing({ ...r })}
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Hapus"
+                            className="text-destructive"
+                            onClick={() => setDeleting(r)}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          Showing {from} to {to} of {total.toLocaleString("id-ID")} entries
+        </p>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+            <ChevronLeft className="mr-1 size-4" /> Prev
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page + 1 >= pages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next <ChevronRight className="ml-1 size-4" />
+          </Button>
+        </div>
+      </div>
+
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editing?.["id"] === undefined ? "Tambah Data" : "Edit Data"}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {columns.map((c) => (
+              <div key={c.field} className="space-y-1.5">
+                <Label htmlFor={`f-${c.field}`}>{c.label}</Label>
+                <Input
+                  id={`f-${c.field}`}
+                  value={String(editing?.[c.field] ?? "")}
+                  onChange={(e) =>
+                    setEditing((s) => (s ? { ...s, [c.field]: e.target.value } : s))
+                  }
+                />
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)}>
+              Batal
+            </Button>
+            <Button onClick={save}>Simpan</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus data ini?</AlertDialogTitle>
+            <AlertDialogDescription>Tindakan ini tidak dapat dibatalkan.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete}>Hapus</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+export function exportTableCsv(rows: Row[], filename: string) {
+  if (!rows.length) {
+    toast.error("Tidak ada data.");
+    return;
+  }
+  void (async () => {
+    const XLSX = await import("xlsx");
+    const columns = Object.keys(rows[0]!);
+    const ws = XLSX.utils.json_to_sheet(
+      rows.map((r) => Object.fromEntries(columns.map((c) => [c, r[c] ?? ""]))),
+      { header: columns },
+    );
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Data");
+    const name = filename.replace(/\.(csv|xlsx?)$/i, "") + ".xlsx";
+    XLSX.writeFile(wb, name);
+  })();
+}
