@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CompareDataRouteImport } from './routes/compare-data'
 import { Route as LinksRouteImport } from './routes/links'
+import { Route as KpiRmRouteImport } from './routes/kpi-rm'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as SettingsRouteImport } from './routes/settings'
@@ -33,6 +34,11 @@ const CompareDataRoute = CompareDataRouteImport.update({
 const LinksRoute = LinksRouteImport.update({
   id: '/links',
   path: '/links',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KpiRmRoute = KpiRmRouteImport.update({
+  id: '/kpi-rm',
+  path: '/kpi-rm',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -75,6 +81,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/compare-data': typeof CompareDataRoute
   '/links': typeof LinksRoute
+  '/kpi-rm': typeof KpiRmRoute
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
   '/settings': typeof SettingsRoute
@@ -87,6 +94,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/compare-data': typeof CompareDataRoute
   '/links': typeof LinksRoute
+  '/kpi-rm': typeof KpiRmRoute
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
   '/settings': typeof SettingsRoute
@@ -100,6 +108,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/compare-data': typeof CompareDataRoute
   '/links': typeof LinksRoute
+  '/kpi-rm': typeof KpiRmRoute
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
   '/settings': typeof SettingsRoute
@@ -114,6 +123,7 @@ export interface FileRouteTypes {
     | '/'
     | '/compare-data'
     | '/links'
+    | '/kpi-rm'
     | '/login'
     | '/logs'
     | '/settings'
@@ -126,6 +136,7 @@ export interface FileRouteTypes {
     | '/'
     | '/compare-data'
     | '/links'
+    | '/kpi-rm'
     | '/login'
     | '/logs'
     | '/settings'
@@ -138,6 +149,7 @@ export interface FileRouteTypes {
     | '/'
     | '/compare-data'
     | '/links'
+    | '/kpi-rm'
     | '/login'
     | '/logs'
     | '/settings'
@@ -151,6 +163,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CompareDataRoute: typeof CompareDataRoute
   LinksRoute: typeof LinksRoute
+  KpiRmRoute: typeof KpiRmRoute
   LoginRoute: typeof LoginRoute
   LogsRoute: typeof LogsRoute
   SettingsRoute: typeof SettingsRoute
@@ -181,6 +194,13 @@ declare module '@tanstack/react-router' {
       path: '/links'
       fullPath: '/links'
       preLoaderRoute: typeof LinksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/kpi-rm': {
+      id: '/kpi-rm'
+      path: '/kpi-rm'
+      fullPath: '/kpi-rm'
+      preLoaderRoute: typeof KpiRmRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -239,6 +259,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CompareDataRoute: CompareDataRoute,
   LinksRoute: LinksRoute,
+  KpiRmRoute: KpiRmRoute,
   LoginRoute: LoginRoute,
   LogsRoute: LogsRoute,
   SettingsRoute: SettingsRoute,

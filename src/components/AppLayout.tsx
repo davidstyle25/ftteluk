@@ -8,6 +8,7 @@ import {
   ScrollText,
   Settings,
   GitCompare,
+  Target,
   ChevronDown,
   Database,
   Menu,
@@ -23,6 +24,7 @@ type Item = { label: string; to: string; slug?: string; icon?: typeof LayoutGrid
 const FLAT: Item[] = [
   { label: "Dashboard", to: "/", icon: LayoutGrid },
   { label: "Links", to: "/links", icon: LinkIcon },
+  { label: "KPI RM", to: "/kpi-rm", icon: Target },
   ...VISIBLE_CATEGORIES.filter((c) => !c.group).map((c) => ({
     label: c.label,
     to: "/data/$slug",

@@ -113,14 +113,6 @@ function DataCategoryPage() {
     );
   }
 
-  if (slug === "kpi_rm") {
-    return (
-      <AppLayout>
-        <PageHeader title="KPI RM" description="Isi halaman ini menyusul." />
-      </AppLayout>
-    );
-  }
-
   const isCompareResult = category.readonly && !!CATEGORY_BY_SLUG.get(`${slug}_kenaikan`);
   const isProduktivitas = slug === "produktivitas_rmft";
   const isTimeSeries = slug === "time_series";

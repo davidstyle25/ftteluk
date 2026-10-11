@@ -1335,18 +1335,6 @@ export const DATA_CATEGORIES: DataCategory[] = [
       { field: "des", label: "Des", type: "decimal" },
     ],
   },
-  {
-    // Menu placeholder: isi halaman menyusul.
-    slug: "kpi_rm",
-    table: "kpi_rm",
-    label: "KPI RM",
-    group: "KPI RM",
-    hidden: false,
-    readonly: true,
-    csvUpload: false,
-    noAdd: true,
-    columns: [],
-  },
 ];
 
 export const CATEGORY_BY_SLUG = new Map(DATA_CATEGORIES.map((c) => [c.slug, c]));

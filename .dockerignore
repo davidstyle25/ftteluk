@@ -1,0 +1,15 @@
+node_modules
+.tanstack
+build-node
+.output
+dist
+tmp
+*.log
+stderr.log
+.env
+.env.*
+!.env.example
+.DS_Store
+.git
+.vscode
+.idea
