@@ -6,7 +6,11 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const SPREADSHEET_ID = "1Zq_yn7Zpcq4-_08h0NrHmtFGdYtb8vOf_zFRVMOJmBU";
 const SHEET_NAME = "NEW TIME SERIES 2026";
-const RANGE = `'${SHEET_NAME}'!B2:KU16`;
+// Range dibaca mulai kolom A (kolom label seperti KONSOLIDASI/RITEL/MIKRO ada di A) dan
+// sampai baris 60 supaya baris tambahan di sheet ikut terbaca. Baris & kolom yang kosong
+// otomatis disembunyikan saat ditampilkan. Bisa ditimpa lewat env TIME_SERIES_RANGE
+// (mis. "A2:KU80"); nama sheet lewat TIME_SERIES_SHEET.
+const DEFAULT_RANGE = "A2:KU60";
 
 // Cache sederhana di memori agar tidak memanggil API Google tiap request.
 const CACHE_TTL_MS = 20_000;
@@ -16,7 +20,11 @@ type GridColor = { red?: number; green?: number; blue?: number } | null;
 type ApiCellData = {
   formattedValue?: string;
   effectiveValue?: { stringValue?: string; numberValue?: number; boolValue?: boolean };
-  effectiveFormat?: { backgroundColor?: GridColor };
+  effectiveFormat?: {
+    backgroundColor?: GridColor;
+    horizontalAlignment?: string;
+    textFormat?: { bold?: boolean; foregroundColor?: GridColor };
+  };
 };
 type ApiRowData = { values?: ApiCellData[] };
 type ApiColumnMetadata = { hiddenByUser?: boolean };
@@ -38,7 +46,13 @@ type ApiSheet = {
 };
 type ApiResponse = { sheets?: ApiSheet[]; error?: { message?: string } };
 
-type OutCell = { v: string | null; rgb: string | null };
+type OutCell = {
+  v: string | null;
+  rgb: string | null; // warna latar
+  b?: boolean; // teks tebal
+  fg?: string | null; // warna teks (selain hitam)
+  ha?: "LEFT" | "CENTER" | "RIGHT"; // perataan teks dari sheet
+};
 
 function colorToHex(c: GridColor): string | null {
   if (!c) return null;
@@ -46,6 +60,16 @@ function colorToHex(c: GridColor): string | null {
   const g = Math.round((c.green ?? 1) * 255);
   const b = Math.round((c.blue ?? 1) * 255);
   if (r === 255 && g === 255 && b === 255) return null; // putih = tanpa warna
+  const h = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${h(r)}${h(g)}${h(b)}`;
+}
+
+function fgToHex(c: GridColor | undefined): string | null {
+  if (!c) return null;
+  const r = Math.round((c.red ?? 0) * 255);
+  const g = Math.round((c.green ?? 0) * 255);
+  const b = Math.round((c.blue ?? 0) * 255);
+  if (r === 0 && g === 0 && b === 0) return null; // hitam = bawaan
   const h = (n: number) => n.toString(16).padStart(2, "0");
   return `#${h(r)}${h(g)}${h(b)}`;
 }
@@ -73,14 +97,17 @@ function colLetter(idx: number): string {
 }
 
 async function fetchGrid(apiKey: string): Promise<Response> {
+  const sheetName = process.env["TIME_SERIES_SHEET"] || SHEET_NAME;
+  const range = `'${sheetName}'!${process.env["TIME_SERIES_RANGE"] || DEFAULT_RANGE}`;
   const fields = [
     "sheets(properties(title),merges,",
     "data(startRow,startColumn,columnMetadata(hiddenByUser),",
-    "rowData(values(formattedValue,effectiveValue,effectiveFormat(backgroundColor)))))",
+    "rowData(values(formattedValue,effectiveValue,",
+    "effectiveFormat(backgroundColor,horizontalAlignment,textFormat(bold,foregroundColor))))))",
   ].join("");
   const url =
     `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}` +
-    `?includeGridData=true&ranges=${encodeURIComponent(RANGE)}` +
+    `?includeGridData=true&ranges=${encodeURIComponent(range)}` +
     `&fields=${encodeURIComponent(fields)}` +
     `&key=${encodeURIComponent(apiKey)}`;
 
@@ -124,10 +151,17 @@ async function fetchGrid(apiKey: string): Promise<Response> {
     const line: OutCell[] = [];
     for (let c = 0; c < colCount; c++) {
       const apiCell = apiRows[r]?.values?.[c];
-      line.push({
+      const fmt = apiCell?.effectiveFormat;
+      const ha = fmt?.horizontalAlignment;
+      const out: OutCell = {
         v: cellValue(apiCell),
-        rgb: colorToHex(apiCell?.effectiveFormat?.backgroundColor ?? null),
-      });
+        rgb: colorToHex(fmt?.backgroundColor ?? null),
+      };
+      if (fmt?.textFormat?.bold) out.b = true;
+      const fg = fgToHex(fmt?.textFormat?.foregroundColor);
+      if (fg) out.fg = fg;
+      if (ha === "LEFT" || ha === "CENTER" || ha === "RIGHT") out.ha = ha;
+      line.push(out);
     }
     cells.push(line);
   }
@@ -160,7 +194,7 @@ async function fetchGrid(apiKey: string): Promise<Response> {
 
   return new Response(
     JSON.stringify({
-      sheet: sheet.properties?.title ?? SHEET_NAME,
+      sheet: sheet.properties?.title ?? sheetName,
       startRow,
       startCol,
       cells,

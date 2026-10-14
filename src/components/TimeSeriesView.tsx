@@ -1,8 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type Cell = { v: string | null; rgb: string | null };
+type Cell = {
+  v: string | null;
+  rgb: string | null;
+  b?: boolean;
+  fg?: string | null;
+  ha?: "LEFT" | "CENTER" | "RIGHT";
+};
 type ColMeta = { letter: string; hidden: boolean; empty: boolean };
 type Merge = { r1: number; r2: number; c1: number; c2: number };
 type ApiData = {
@@ -22,6 +28,30 @@ type Span = { rowSpan?: number | undefined; colSpan?: number | undefined; hidden
 
 function toCss(rgb: string | null): string | undefined {
   return rgb ?? undefined;
+}
+
+const NUMERIC = /^[\s(+-]*[\d.,]+\s*%?\s*\)?$/;
+
+/** Gaya sel mengikuti sheet: warna latar, teks tebal, warna teks, dan perataan. */
+function cellStyle(cell: Cell, header: boolean): CSSProperties {
+  const align =
+    cell.ha === "LEFT"
+      ? "left"
+      : cell.ha === "CENTER"
+        ? "center"
+        : cell.ha === "RIGHT"
+          ? "right"
+          : header
+            ? "center"
+            : cell.v && !NUMERIC.test(cell.v)
+              ? "left"
+              : "right";
+  return {
+    backgroundColor: toCss(cell.rgb),
+    fontWeight: cell.b || header ? 700 : undefined,
+    color: cell.fg ?? undefined,
+    textAlign: align,
+  };
 }
 
 /** Kolom yang ditampilkan: tidak hidden dan tidak kosong. */
@@ -156,8 +186,8 @@ function SheetTable({ data }: { data: ApiData }) {
                     key={ci}
                     rowSpan={span?.rowSpan}
                     colSpan={span?.colSpan}
-                    style={{ backgroundColor: toCss(cellAt(rIdx, cIdx).rgb) }}
-                    className="whitespace-nowrap border border-border px-2 py-1 text-center align-middle font-medium"
+                    style={cellStyle(cellAt(rIdx, cIdx), true)}
+                    className="whitespace-nowrap border border-border px-2 py-1 align-middle"
                   >
                     {cellAt(rIdx, cIdx).v ?? ""}
                   </th>
@@ -179,8 +209,8 @@ function SheetTable({ data }: { data: ApiData }) {
                       key={ci}
                       rowSpan={span?.rowSpan}
                       colSpan={span?.colSpan}
-                      style={{ backgroundColor: toCss(cellAt(rIdx, cIdx).rgb) }}
-                      className="whitespace-nowrap border border-border px-2 py-1 text-right align-middle tabular-nums"
+                      style={cellStyle(cellAt(rIdx, cIdx), false)}
+                      className="whitespace-nowrap border border-border px-2 py-1 align-middle tabular-nums"
                     >
                       {cellAt(rIdx, cIdx).v ?? ""}
                     </td>
