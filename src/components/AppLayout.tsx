@@ -48,6 +48,9 @@ const VIEWER_DIRECT: Record<string, string> = {
   DEPO: "depo_data3",
 };
 
+// Grup menu (dengan submenu) yang disembunyikan untuk viewer; admin tetap melihatnya.
+const HIDDEN_FOR_VIEWER = new Set(["EDC", "QRIS"]);
+
 const SYSTEM: Item[] = [
   { label: "Users", to: "/users", icon: Users },
   { label: "Activity Logs", to: "/logs", icon: ScrollText },
@@ -139,6 +142,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           ))}
 
           {GROUPED.map((group) => {
+            if (!isAdmin && HIDDEN_FOR_VIEWER.has(group.label)) return null;
             const direct = VIEWER_DIRECT[group.label];
             if (!isAdmin && direct) {
               const target = group.items.find((i) => i.slug === direct);
