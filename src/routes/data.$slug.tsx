@@ -188,16 +188,16 @@ function DataCategoryPage() {
      <div
        className={cn(
          "mb-5 grid gap-4",
-         isDi321 ? "items-start md:grid-cols-[minmax(0,1fr)_22rem]" : "sm:grid-cols-2 lg:grid-cols-3",
+         showValas ? "items-start md:grid-cols-[minmax(0,1fr)_22rem]" : "sm:grid-cols-2 lg:grid-cols-3",
        )}
      >
-       <div className={isDi321 ? "grid gap-4 sm:grid-cols-2" : "contents"}>
+       <div className={showValas ? "grid gap-4 sm:grid-cols-2" : "contents"}>
          <StatCard
            label={`Jumlah Data · ${category.label}`}
            value={count === null ? "…" : count.toLocaleString("id-ID")}
          />
        </div>
-       {isDi321 && (
+       {showValas && (
          <ValasGiroCard table={category.table} isAdmin={isAdmin} onCompared={() => setTick((t) => t + 1)} />
        )}
      </div>
