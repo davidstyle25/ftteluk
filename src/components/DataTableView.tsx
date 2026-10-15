@@ -78,8 +78,10 @@ export function DataTableView({
   const [editing, setEditing] = useState<Row | null>(null);
   const [deleting, setDeleting] = useState<Row | null>(null);
 
+  // Pencarian mencakup SEMUA kolom teks (sebelumnya hanya 4 kolom pertama, sehingga kolom
+  // seperti Short Name / Account Number di DI321 tidak ikut dicari).
   const searchColumns = useMemo(
-    () => columns.filter((c) => c.type === "string").slice(0, 4).map((c) => c.field),
+    () => columns.filter((c) => c.type === "string").slice(0, 16).map((c) => c.field),
     [columns],
   );
 
@@ -101,7 +103,9 @@ export function DataTableView({
         .select("*", { count: "exact" })
         .range(page * pageSize, page * pageSize + pageSize - 1);
       if (query && searchColumns.length) {
-        req = req.or(searchColumns.map((c) => `${c}.ilike.%${query}%`).join(","));
+                // Nilai dibungkus tanda kutip agar koma/kurung/titik di teks pencarian tidak merusak filter.
+        const q = query.trim().replace(/[\\"]/g, "\\$&");
+        req = req.or(searchColumns.map((c) => `${c}.ilike."%${q}%"`).join(","));
       }
       if (sort) req = req.order(sort.col, { ascending: sort.asc });
       else req = req.order("id", { ascending: true });
