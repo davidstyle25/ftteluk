@@ -13,6 +13,7 @@ import { AverageGiroView } from "@/components/AverageGiroView";
 import { EdcQrisView, PROD_CFG, SV_CFG } from "@/components/EdcQrisView";
 import { TimeSeriesView } from "@/components/TimeSeriesView";
 import { CategoryStats } from "@/components/CategoryStats";
+   import { ValasGiroCard } from "@/components/ValasGiroCard";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -116,7 +117,10 @@ function DataCategoryPage() {
   const isCompareResult = category.readonly && !!CATEGORY_BY_SLUG.get(`${slug}_kenaikan`);
   const isProduktivitas = slug === "produktivitas_rmft";
   const isTimeSeries = slug === "time_series";
+       // DATA1 YTD / DATA2 MTD / DATA3 DTD / DATA4 KEMARIN milik DI321: tampilkan tabel kurs Valas Giro.
+     const isDi321 = /^di321_data[1-4]$/.test(slug);
   // Viewer hanya punya akses penuh di kategori Pivot Multi; selainnya read-only.
+  
   const canManage = isAdmin || slug === "pivot_multi";
 
   const exportExcel = async () => {
@@ -177,14 +181,24 @@ function DataCategoryPage() {
 
       {(slug === "edc" || slug === "qris") && <CategoryStats slug={slug} />}
 
-      {!isCompareResult && !isTimeSeries && !(slug === "edc" || slug === "qris") && (
-        <div className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <StatCard
-            label={`Jumlah Data · ${category.label}`}
-            value={count === null ? "…" : count.toLocaleString("id-ID")}
-          />
-        </div>
-      )}
+   {!isCompareResult && !isTimeSeries && !(slug === "edc" || slug === "qris") && (
+     <div
+       className={cn(
+         "mb-5 grid gap-4",
+         isDi321 ? "items-start md:grid-cols-[minmax(0,1fr)_22rem]" : "sm:grid-cols-2 lg:grid-cols-3",
+       )}
+     >
+       <div className={isDi321 ? "grid gap-4 sm:grid-cols-2" : "contents"}>
+         <StatCard
+           label={`Jumlah Data · ${category.label}`}
+           value={count === null ? "…" : count.toLocaleString("id-ID")}
+         />
+       </div>
+       {isDi321 && (
+         <ValasGiroCard table={category.table} isAdmin={isAdmin} onCompared={() => setTick((t) => t + 1)} />
+       )}
+     </div>
+   )}
 
       {category.csvUpload && (
         <div className="mb-4 inline-flex rounded-lg border bg-muted/50 p-1">
