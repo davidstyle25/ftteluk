@@ -119,6 +119,9 @@ function DataCategoryPage() {
   const isTimeSeries = slug === "time_series";
        // DATA1 YTD / DATA2 MTD / DATA3 DTD / DATA4 KEMARIN milik DI321: tampilkan tabel kurs Valas Giro.
      const isDi321 = /^di321_data[1-4]$/.test(slug);
+
+       // Tabel Valas Giro hanya untuk admin; viewer tidak melihatnya.
+  const showValas = isDi321 && isAdmin;
   // Viewer hanya punya akses penuh di kategori Pivot Multi; selainnya read-only.
   
   const canManage = isAdmin || slug === "pivot_multi";
