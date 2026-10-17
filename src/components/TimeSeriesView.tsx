@@ -94,7 +94,7 @@ function buildMergeMap(data: ApiData, cols: number[], rows: number[]): Map<strin
     const colSpan = endColPos - startColPos + 1;
     spanMap.set(`${startRowPos}:${startColPos}`, {
       rowSpan: rowSpan > 1 ? rowSpan : undefined,
-            colSpan: colSpan > 1 ? colSpan : undefined,
+      colSpan: colSpan > 1 ? colSpan : undefined,
       origin: { r: m.r1, c: m.c1 },
     });
     for (let rr = startRowPos; rr <= endRowPos; rr++) {
@@ -179,7 +179,6 @@ function SheetTable({ data }: { data: ApiData }) {
 
   const cellAt = (rIdx: number, cIdx: number): Cell => data.cells[rIdx]?.[cIdx] ?? { v: null, rgb: null };
 
-
   // Sel gabungan (merge) menampilkan isi & gaya dari sel asalnya di sheet. Sel asal itu bisa
   // berada di kolom yang di-hide (mis. "RKA" digabung di atas kolom-kolom bulan yang sebagian
   // disembunyikan), jadi ambil dari sel asal, bukan dari kolom pertama yang tampak.
@@ -193,7 +192,12 @@ function SheetTable({ data }: { data: ApiData }) {
   return (
     <div className="overflow-auto rounded-lg border">
       <table className="border-collapse text-xs">
-                      if (span?.hidden) return null;
+        <thead>
+          {headerRowIdxs.map((rIdx, ri) => (
+            <tr key={`h-${ri}`}>
+              {cols.map((cIdx, ci) => {
+                const span = mergeMap.get(`${ri}:${ci}`);
+                if (span?.hidden) return null;
                 const cell = resolveCell(rIdx, cIdx, span);
                 return (
                   <th
@@ -205,27 +209,19 @@ function SheetTable({ data }: { data: ApiData }) {
                   >
                     {cell.v ?? ""}
                   </th>
-          {headerRowIdxs.map((rIdx, ri) => (
-            <tr key={`h-${ri}`}>
-              {cols.map((cIdx, ci) => {
-                const span = mergeMap.get(`${ri}:${ci}`);
-                if (span?.hidden) return null;
-                return (
-                  <th
-                    key={ci}
-                    rowSpan={span?.rowSpan}
-                    colSpan={span?.colSpan}
-                    style={cellStyle(cellAt(rIdx, cIdx), true)}
-                    className="whitespace-nowrap border border-border px-2 py-1 align-middle"
-                  >
-                    {cellAt(rIdx, cIdx).v ?? ""}
-                  </th>
                 );
               })}
             </tr>
           ))}
         </thead>
-                        if (span?.hidden) return null;
+        <tbody>
+          {bodyRowIdxs.map((rIdx, ri) => {
+            const rowPos = ri + HEADER_ROWS;
+            return (
+              <tr key={ri}>
+                {cols.map((cIdx, ci) => {
+                  const span = mergeMap.get(`${rowPos}:${ci}`);
+                  if (span?.hidden) return null;
                   const cell = resolveCell(rIdx, cIdx, span);
                   return (
                     <td
@@ -236,23 +232,6 @@ function SheetTable({ data }: { data: ApiData }) {
                       className="whitespace-nowrap border border-border px-2 py-1 align-middle tabular-nums"
                     >
                       {cell.v ?? ""}
-                    </td>
-          {bodyRowIdxs.map((rIdx, ri) => {
-            const rowPos = ri + HEADER_ROWS;
-            return (
-              <tr key={ri}>
-                {cols.map((cIdx, ci) => {
-                  const span = mergeMap.get(`${rowPos}:${ci}`);
-                  if (span?.hidden) return null;
-                  return (
-                    <td
-                      key={ci}
-                      rowSpan={span?.rowSpan}
-                      colSpan={span?.colSpan}
-                      style={cellStyle(cellAt(rIdx, cIdx), false)}
-                      className="whitespace-nowrap border border-border px-2 py-1 align-middle tabular-nums"
-                    >
-                      {cellAt(rIdx, cIdx).v ?? ""}
                     </td>
                   );
                 })}
