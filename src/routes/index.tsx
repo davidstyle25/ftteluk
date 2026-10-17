@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/AppLayout";
    import { DepositoCalculator } from "@/components/DepositoCalculator";
+      import { ProgramCalculator } from "@/components/ProgramCalculator";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -252,6 +253,7 @@ function DashboardPage() {
         </div>
       </div>
          <DepositoCalculator />
+                  <ProgramCalculator />
       {selected && (
         <NotesDialog
           date={selected}
