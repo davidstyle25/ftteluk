@@ -49,7 +49,7 @@ const VIEWER_DIRECT: Record<string, string> = {
 };
 
 // Grup menu (dengan submenu) yang disembunyikan untuk viewer; admin tetap melihatnya.
-const HIDDEN_FOR_VIEWER = new Set(["EDC", "QRIS"]);
+const HIDDEN_FOR_VIEWER = new Set(["EDC", "QRIS", "RKA"]);
 
 const SYSTEM: Item[] = [
   { label: "Users", to: "/users", icon: Users },
