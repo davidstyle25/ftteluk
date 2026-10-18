@@ -13,7 +13,7 @@ import { AverageGiroView } from "@/components/AverageGiroView";
 import { EdcQrisView, PROD_CFG, SV_CFG } from "@/components/EdcQrisView";
 import { TimeSeriesView } from "@/components/TimeSeriesView";
 import { CategoryStats } from "@/components/CategoryStats";
-   import { ValasGiroCard } from "@/components/ValasGiroCard";
+import { ValasGiroCard } from "@/components/ValasGiroCard";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -117,22 +117,40 @@ function DataCategoryPage() {
   const isCompareResult = category.readonly && !!CATEGORY_BY_SLUG.get(`${slug}_kenaikan`);
   const isProduktivitas = slug === "produktivitas_rmft";
   const isTimeSeries = slug === "time_series";
-       // DATA1 YTD / DATA2 MTD / DATA3 DTD / DATA4 KEMARIN milik DI321: tampilkan tabel kurs Valas Giro.
-     const isDi321 = /^di321_data[1-4]$/.test(slug);
-
-       // Tabel Valas Giro hanya untuk admin; viewer tidak melihatnya.
+  // DATA1 YTD / DATA2 MTD / DATA3 DTD / DATA4 KEMARIN milik DI321: tampilkan tabel kurs Valas Giro.
+  const isDi321 = /^di321_data[1-4]$/.test(slug);
+  // Tabel Valas Giro hanya untuk admin; viewer tidak melihatnya.
   const showValas = isDi321 && isAdmin;
   // Viewer hanya punya akses penuh di kategori Pivot Multi; selainnya read-only.
-  
   const canManage = isAdmin || slug === "pivot_multi";
 
   const exportExcel = async () => {
-    const { data } = await supabase
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .from(category.table as any)
-      .select("*")
-      .limit(5000);
-    exportTableCsv((data ?? []) as unknown as Record<string, unknown>[], `${slug}.xlsx`);
+    // Server membatasi satu permintaan (default 1000 baris), jadi ambil bertahap per 1000 baris
+    // berurutan berdasarkan id sampai habis, supaya semua data ikut ter-export.
+    const all: Record<string, unknown>[] = [];
+    const chunk = 1000;
+    for (let i = 0; i < 1000; i++) {
+      const { data, error } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .from(category.table as any)
+        .select("*")
+        .order("id", { ascending: true })
+        .range(i * chunk, i * chunk + chunk - 1);
+      if (error) {
+        toast.error(`Export gagal: ${error.message}`);
+        return;
+      }
+      const part = (data ?? []) as unknown as Record<string, unknown>[];
+      all.push(...part);
+      if (part.length < chunk) break;
+    }
+    // Kolom internal balance_asli (penyimpan balance sebelum dikali kurs) tidak ikut di file.
+    const rows = all.map((r) => {
+      const { balance_asli: _asli, ...rest } = r;
+      void _asli;
+      return rest;
+    });
+    exportTableCsv(rows, `${slug}.xlsx`);
   };
 
   const wipe = async () => {
@@ -184,24 +202,24 @@ function DataCategoryPage() {
 
       {(slug === "edc" || slug === "qris") && <CategoryStats slug={slug} />}
 
-   {!isCompareResult && !isTimeSeries && !(slug === "edc" || slug === "qris") && (
-     <div
-       className={cn(
-         "mb-5 grid gap-4",
-         showValas ? "items-start md:grid-cols-[minmax(0,1fr)_22rem]" : "sm:grid-cols-2 lg:grid-cols-3",
-       )}
-     >
-       <div className={showValas ? "grid gap-4 sm:grid-cols-2" : "contents"}>
-         <StatCard
-           label={`Jumlah Data · ${category.label}`}
-           value={count === null ? "…" : count.toLocaleString("id-ID")}
-         />
-       </div>
-       {showValas && (
-         <ValasGiroCard table={category.table} isAdmin={isAdmin} onCompared={() => setTick((t) => t + 1)} />
-       )}
-     </div>
-   )}
+      {!isCompareResult && !isTimeSeries && !(slug === "edc" || slug === "qris") && (
+        <div
+          className={cn(
+            "mb-5 grid gap-4",
+            showValas ? "items-start md:grid-cols-[minmax(0,1fr)_22rem]" : "sm:grid-cols-2 lg:grid-cols-3",
+          )}
+        >
+          <div className={showValas ? "grid gap-4 sm:grid-cols-2" : "contents"}>
+            <StatCard
+              label={`Jumlah Data · ${category.label}`}
+              value={count === null ? "…" : count.toLocaleString("id-ID")}
+            />
+          </div>
+          {showValas && (
+            <ValasGiroCard table={category.table} isAdmin={isAdmin} onCompared={() => setTick((t) => t + 1)} />
+          )}
+        </div>
+      )}
 
       {category.csvUpload && (
         <div className="mb-4 inline-flex rounded-lg border bg-muted/50 p-1">
