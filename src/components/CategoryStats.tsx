@@ -135,9 +135,10 @@ export function CategoryStats({ slug }: { slug: string }) {
         const tierRes = results[fixed.length + 1] as FieldCount[] | FieldCount;
         const branchRes = results[fixed.length + 2] as FieldCount[] | FieldCount;
         const splitRes = results[fixed.length + 3] as unknown as
-          | { cabangProduktif?: number; mikroProduktif?: number }
+          | { cabang?: number; mikro?: number; cabangProduktif?: number; mikroProduktif?: number }
           | unknown[];
-        const split: { cabangProduktif?: number; mikroProduktif?: number } = Array.isArray(splitRes) ? {} : splitRes;
+        const split: { cabang?: number; mikro?: number; cabangProduktif?: number; mikroProduktif?: number } =
+          Array.isArray(splitRes) ? {} : splitRes;
         const totalCount = Array.isArray(totalRes) ? 0 : totalRes.count;
 
         const baseCards: Card[] = fixedResults.map(({ def, res }) => {
@@ -165,12 +166,14 @@ export function CategoryStats({ slug }: { slug: string }) {
 
         const branchCards: Card[] = [];
         if (showBranch) {
-          const cabang = Array.isArray(branchRes)
-            ? branchRes.filter((r) => isCabang(r.value)).reduce((a, r) => a + Number(r.count), 0)
-            : 0;
+          const cabang =
+            split.cabang ??
+            (Array.isArray(branchRes)
+              ? branchRes.filter((r) => isCabang(r.value)).reduce((a, r) => a + Number(r.count), 0)
+              : 0);
           branchCards.push(
             { label: "Total QRIS Cabang", count: cabang, tone: "teal", field: "__qris_cabang__", value: null },
-            { label: "Total QRIS Mikro", count: Math.max(totalCount - cabang, 0), tone: "slate", field: "__qris_mikro__", value: null },
+            { label: "Total QRIS Mikro", count: split.mikro ?? Math.max(totalCount - cabang, 0), tone: "slate", field: "__qris_mikro__", value: null },
             { label: "QRIS Cabang Produktif", count: split.cabangProduktif ?? 0, tone: "green", field: "__qris_cabang_produktif__", value: null },
             { label: "QRIS Mikro Produktif", count: split.mikroProduktif ?? 0, tone: "blue", field: "__qris_mikro_produktif__", value: null },
           );

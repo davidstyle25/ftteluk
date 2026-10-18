@@ -39,7 +39,32 @@ const fmt = (v: number, max = 0, min = 0) =>
   v.toLocaleString("en-US", { minimumFractionDigits: min, maximumFractionDigits: max });
 
 // Statistik (sama dengan kartu di atas tabel): total data, jumlah produktif/aktif, dan tanggal posisi data.
-type EdcStats = { total: number; produktif: number; posisi: string | null };
+type EdcStats = {
+  total: number;
+  produktif: number;
+  posisi: string | null;
+  /** Khusus QRIS: Cabang (branch 285) dan Mikro (selain itu). */
+  cabang?: number;
+  mikro?: number;
+  cabangProduktif?: number;
+  mikroProduktif?: number;
+};
+
+type Split = { cabang: number; mikro: number; cabangProduktif: number; mikroProduktif: number };
+
+async function fetchSplit(): Promise<Split | null> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    const res = await fetch("/api/public/field-stats?cat=qris&field=__qris_split__", {
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as Split;
+  } catch {
+    return null;
+  }
+}
 
 type Counts = { value: string | null; count: number | string }[];
 // RPC field_value_counts belum ada di types.ts hasil generate -> longgarkan tipe.
@@ -58,10 +83,11 @@ const VARIANTS = {
 
 async function loadStats(variant: ProduktifVariant): Promise<EdcStats> {
   const v = VARIANTS[variant];
-  const [tot, st, pos] = await Promise.all([
+  const [tot, st, pos, split] = await Promise.all([
     supabase.from(v.table).select("*", { count: "exact", head: true }),
     rpc("field_value_counts", { _table: v.table, _field: v.field }),
     rpc("field_value_counts", { _table: v.table, _field: "posisi" }),
+    variant === "qris" ? fetchSplit() : Promise.resolve(null),
   ]);
   const statusRows = (st.data ?? []) as Counts;
   const produktif = statusRows
@@ -74,6 +100,7 @@ async function loadStats(variant: ProduktifVariant): Promise<EdcStats> {
     total: tot.count ?? 0,
     produktif,
     posisi: formatPosisi(posRows[0]?.value ?? null),
+    ...(split ?? {}),
   };
 }
 
@@ -228,12 +255,18 @@ export function EdcProduktifTable({
     };
   }, [V]);
 
-  // Baris "otomatis": Populasi = Total data, Sudah Produktif = jumlah Produktif/AKTIF (dari statistik data).
+  // Baris "otomatis": Populasi & Sudah Produktif dari statistik data.
+  // QRIS: baris Cabang/Mikro memakai Total QRIS Cabang/Mikro dan QRIS Cabang/Mikro Produktif.
   const effRows = useMemo(
     () =>
-      cfg.rows.map((r) =>
-        r.auto ? { ...r, populasi: stats?.total ?? 0, sudah: stats?.produktif ?? 0 } : r,
-      ),
+      cfg.rows.map((r) => {
+        if (!r.auto) return r;
+        if (r.src === "cabang")
+          return { ...r, populasi: stats?.cabang ?? 0, sudah: stats?.cabangProduktif ?? 0 };
+        if (r.src === "mikro")
+          return { ...r, populasi: stats?.mikro ?? 0, sudah: stats?.mikroProduktif ?? 0 };
+        return { ...r, populasi: stats?.total ?? 0, sudah: stats?.produktif ?? 0 };
+      }),
     [cfg.rows, stats],
   );
   const calcs = useMemo(() => effRows.map(calcRow), [effRows]);
@@ -418,10 +451,12 @@ export function EdcProduktifTable({
 
       {canEdit && (
         <p className="border-t px-4 py-2 text-xs text-muted-foreground">
-          Judul, nama kolom, dan angka bisa diedit. Baris dengan ikon petir (biru): Populasi = Total data dan
-          Sudah Produktif = jumlah Produktif/AKTIF diambil otomatis dari statistik data; klik ikon petir untuk
-          mengisinya manual. Tulis {"{posisi}"} (dengan kurung kurawal) di judul kolom agar tanggalnya otomatis dari
-          kolom Posisi data; klik di luar kotak untuk melihat hasilnya. Kolom Total, Gap, %, dan Aspirasi dihitung otomatis. Jangan lupa klik Simpan.
+          Judul, nama kolom, dan angka bisa diedit. Baris dengan ikon petir (biru): Populasi dan
+          Sudah Produktif diambil otomatis dari statistik data (QRIS: baris Cabang/Mikro dari Total QRIS
+          Cabang/Mikro dan QRIS Cabang/Mikro Produktif); klik ikon petir untuk mengisinya manual. Tulis{" "}
+          {"{posisi}"} (dengan kurung kurawal) di judul kolom agar tanggalnya otomatis dari kolom Posisi
+          data; klik di luar kotak untuk melihat hasilnya. Kolom Total, Gap, %, dan Aspirasi dihitung
+          otomatis. Jangan lupa klik Simpan.
         </p>
       )}
     </section>

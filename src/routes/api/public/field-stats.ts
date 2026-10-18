@@ -49,8 +49,10 @@ async function handle(request: Request): Promise<Response> {
   const isCabang = (v: unknown) => /^285(\.0+)?$/.test(String(v ?? "").trim());
   const isProduktif = (v: unknown) => String(v ?? "").trim().toLowerCase() === "produktif";
 
-  // Hitung: {cabangProduktif, mikroProduktif} dalam satu kali baca (hanya 2 kolom).
+  // Hitung sekali baca (hanya 2 kolom): total Cabang/Mikro dan yang Produktif (status_qris).
   if (cat === "qris" && field === "__qris_split__") {
+    let cabang = 0;
+    let mikro = 0;
     let cabangProduktif = 0;
     let mikroProduktif = 0;
     const chunk = 1000;
@@ -64,13 +66,18 @@ async function handle(request: Request): Promise<Response> {
       if (error) return json({ error: error.message }, 400);
       const part = (data ?? []) as unknown as Record<string, unknown>[];
       for (const r of part) {
-        if (!isProduktif(r["status_qris"])) continue;
-        if (isCabang(r["branch"])) cabangProduktif++;
-        else mikroProduktif++;
+        const prod = isProduktif(r["status_qris"]);
+        if (isCabang(r["branch"])) {
+          cabang++;
+          if (prod) cabangProduktif++;
+        } else {
+          mikro++;
+          if (prod) mikroProduktif++;
+        }
       }
       if (part.length < chunk) break;
     }
-    return json({ cabangProduktif, mikroProduktif });
+    return json({ cabang, mikro, cabangProduktif, mikroProduktif });
   }
 
   // Daftar baris untuk popup.

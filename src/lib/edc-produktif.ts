@@ -15,6 +15,8 @@ export type EdcRow = {
   edc: number | null; // EDC/QRIS produktif tanggal terbaru
   /** true = Populasi & Sudah Produktif diambil otomatis dari statistik data. */
   auto?: boolean;
+  /** Khusus QRIS: sumber angka otomatis = baris Cabang (branch 285) atau Mikro (selain itu). */
+  src?: "cabang" | "mikro";
 };
 
 export type EdcProdukCfg = {
@@ -63,8 +65,8 @@ export const QRIS_DEFAULT_CFG: EdcProdukCfg = {
     "Aspirasi 110%",
   ],
   rows: [
-    { nama: "CABANG ONLY", populasi: 4881, rka: 1127, sudah: 805, edc: null, auto: true },
-    { nama: "MIKRO", populasi: 13599, rka: 2744, sudah: 2862, edc: null, auto: false },
+    { nama: "CABANG ONLY", populasi: 4881, rka: 1127, sudah: 805, edc: null, auto: true, src: "cabang" },
+    { nama: "MIKRO", populasi: 13599, rka: 2744, sudah: 2862, edc: null, auto: true, src: "mikro" },
   ],
 };
 
@@ -118,14 +120,21 @@ export function parseCfg(raw: string | null | undefined, def: EdcProdukCfg = DEF
       typeof o.headers?.[i] === "string" ? (o.headers[i] as string) : h,
     );
     const rows = Array.isArray(o.rows)
-      ? o.rows.map((r, i) => ({
-          auto: typeof r?.auto === "boolean" ? r.auto : i === 0,
-          nama: String(r?.nama ?? ""),
-          populasi: typeof r?.populasi === "number" ? r.populasi : null,
-          rka: typeof r?.rka === "number" ? r.rka : null,
-          sudah: typeof r?.sudah === "number" ? r.sudah : null,
-          edc: typeof r?.edc === "number" ? r.edc : null,
-        }))
+      ? o.rows.map((r, i) => {
+          const d = def.rows[i];
+          // Data yang disimpan sebelum ada kolom "src": ikuti default (QRIS: Cabang/Mikro otomatis).
+          const legacy = !!d?.src && !r?.src;
+          return {
+            auto: legacy ? true : typeof r?.auto === "boolean" ? r.auto : i === 0,
+            src:
+              r?.src === "cabang" || r?.src === "mikro" ? r.src : legacy ? d!.src : undefined,
+            nama: String(r?.nama ?? ""),
+            populasi: typeof r?.populasi === "number" ? r.populasi : null,
+            rka: typeof r?.rka === "number" ? r.rka : null,
+            sudah: typeof r?.sudah === "number" ? r.sudah : null,
+            edc: typeof r?.edc === "number" ? r.edc : null,
+          };
+        })
       : def.rows;
     return { title: typeof o.title === "string" ? o.title : def.title, headers, rows };
   } catch {
