@@ -89,6 +89,9 @@ async function fetchRows(
   return (await res.json()) as { columns: string[]; rows: Record<string, unknown>[] };
 }
 
+// QRIS: kolom branch bernilai 285 = Cabang, selain itu = Mikro.
+const isCabang = (v: string | null) => /^285(\.0+)?$/.test((v ?? "").trim());
+
 function findCount(rows: FieldCount[], match: string | null): number {
   if (match === null) return 0;
   const row = rows.find((r) => (r.value ?? "").trim().toLowerCase() === match.trim().toLowerCase());
@@ -103,6 +106,7 @@ export function CategoryStats({ slug }: { slug: string }) {
 
   const fixed = slug === "edc" ? EDC_FIXED : slug === "qris" ? QRIS_FIXED : [];
   const showTiers = slug === "edc";
+  const showBranch = slug === "qris";
 
   useEffect(() => {
     let cancelled = false;
@@ -118,6 +122,7 @@ export function CategoryStats({ slug }: { slug: string }) {
       ),
       fetchFieldStats(slug, "__total__"),
       showTiers ? fetchFieldStats(slug, "tiering_sales_volume") : Promise.resolve([]),
+      showBranch ? fetchFieldStats(slug, "branch") : Promise.resolve([]),
     ])
       .then((results) => {
         if (cancelled) return;
@@ -127,6 +132,8 @@ export function CategoryStats({ slug }: { slug: string }) {
         }[];
         const totalRes = results[fixed.length] as FieldCount;
         const tierRes = results[fixed.length + 1] as FieldCount[] | FieldCount;
+        const branchRes = results[fixed.length + 2] as FieldCount[] | FieldCount;
+        const totalCount = Array.isArray(totalRes) ? 0 : totalRes.count;
 
         const baseCards: Card[] = fixedResults.map(({ def, res }) => {
           const count =
@@ -151,9 +158,20 @@ export function CategoryStats({ slug }: { slug: string }) {
               }))
           : [];
 
-        setCards([...baseCards, ...tierCards]);
+        const branchCards: Card[] = [];
+        if (showBranch) {
+          const cabang = Array.isArray(branchRes)
+            ? branchRes.filter((r) => isCabang(r.value)).reduce((a, r) => a + Number(r.count), 0)
+            : 0;
+          branchCards.push(
+            { label: "Total QRIS Cabang", count: cabang, tone: "teal", field: "__qris_cabang__", value: null },
+            { label: "Total QRIS Mikro", count: Math.max(totalCount - cabang, 0), tone: "slate", field: "__qris_mikro__", value: null },
+          );
+        }
+
+        setCards([...baseCards, ...branchCards, ...tierCards]);
         setTotal({
-          count: Array.isArray(totalRes) ? 0 : totalRes.count,
+          count: totalCount,
           field: "__total__",
         });
       })

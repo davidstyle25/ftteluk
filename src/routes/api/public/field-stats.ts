@@ -39,6 +39,30 @@ async function handle(request: Request): Promise<Response> {
     args: Record<string, unknown>,
   ) => Promise<{ data: unknown; error: { message: string } | null }>;
 
+  // ---- QRIS Cabang (branch = 285) / Mikro (selain itu): daftar baris ----
+  if (wantRows && cat === "qris" && (field === "__qris_cabang__" || field === "__qris_mikro__")) {
+    const wantCabang = field === "__qris_cabang__";
+    const isCabang = (v: unknown) => /^285(\.0+)?$/.test(String(v ?? "").trim());
+    const picked: Record<string, unknown>[] = [];
+    const chunk = 1000;
+    for (let i = 0; i < 100 && picked.length < 5000; i++) {
+      const { data, error } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .from(table as any)
+        .select("*")
+        .order("id", { ascending: true })
+        .range(i * chunk, i * chunk + chunk - 1);
+      if (error) return json({ error: error.message }, 400);
+      const part = (data ?? []) as unknown as Record<string, unknown>[];
+      for (const r of part) {
+        if (isCabang(r["branch"]) === wantCabang) picked.push(r);
+      }
+      if (part.length < chunk) break;
+    }
+    const rows = picked.slice(0, 5000);
+    return json({ columns: rows[0] ? Object.keys(rows[0]) : [], rows });
+  }
+
   // ---- Mode daftar baris (untuk popup datatable) ----
   if (wantRows) {
     const { data, error } = await rpc("field_rows", {
