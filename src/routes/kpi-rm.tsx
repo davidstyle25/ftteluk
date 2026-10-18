@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Save, Search, Trash2 } from "lucide-react";
+import { Download, Plus, Save, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/AppLayout";
@@ -15,6 +15,7 @@ import {
   type KpiRow,
   type KpiView,
 } from "@/lib/kpi-rm";
+import { exportKpiRm } from "@/lib/kpi-rm-export";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -234,8 +235,21 @@ function ViewCard({
             <span className="text-base font-bold">{nama}</span>
           )}
         </div>
-        {isAdmin && (
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              void exportKpiRm(
+                [{ nama, periode, rows }],
+                `kpi-rm-${nama.trim().replace(/[^a-z0-9]+/gi, "_") || "rm"}.xlsx`,
+              )
+            }
+          >
+            <Download className="mr-1 h-4 w-4" /> Export
+          </Button>
+          {isAdmin && (
+            <>
             {dirty && <span className="text-xs text-amber-600">Belum disimpan</span>}
             <Button size="sm" variant="outline" onClick={addRow}>
               <Plus className="mr-1 h-4 w-4" /> Tambah baris
@@ -252,8 +266,9 @@ function ViewCard({
             >
               <Trash2 className="h-4 w-4" />
             </Button>
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -497,11 +512,22 @@ function KpiRmPage() {
         title="KPI RM"
         description="Tabel KPI per Relationship Manager."
         actions={
-          isAdmin ? (
-            <Button onClick={() => setOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" /> Tambah View Tabel
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              disabled={filtered.length === 0}
+              onClick={() =>
+                void exportKpiRm(filtered, `kpi-rm-${new Date().toISOString().slice(0, 10)}.xlsx`)
+              }
+            >
+              <Download className="mr-2 h-4 w-4" /> Export Semua
             </Button>
-          ) : undefined
+            {isAdmin && (
+              <Button onClick={() => setOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" /> Tambah View Tabel
+              </Button>
+            )}
+          </div>
         }
       />
 
