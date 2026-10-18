@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, Trash2, ExternalLink, Search, Download } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { Pencil, Plus, Trash2, ExternalLink, Search, Download, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/AppLayout";
@@ -43,6 +43,9 @@ export const Route = createFileRoute("/links")({
 });
 
 type LinkRow = { id: number; nama: string; url: string };
+type ImportRow = { nama: string; url: string };
+
+const normUrl = (u: string) => (/^https?:\/\//i.test(u) ? u : `https://${u}`);
 
 function LinksPage() {
   const { isAdmin } = useRole();
@@ -54,6 +57,11 @@ function LinksPage() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<LinkRow | null>(null);
   const [term, setTerm] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [importRows, setImportRows] = useState<ImportRow[]>([]);
+  const [importSkipped, setImportSkipped] = useState(0);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const filtered = useMemo(() => {
     const q = term.trim().toLowerCase();
@@ -86,6 +94,75 @@ function LinksPage() {
     const tgl = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(wb, `links-${tgl}.xlsx`);
     toast.success(`${filtered.length} link diexport.`);
+  }
+
+  async function onPickFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const XLSX = await import("xlsx");
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]!];
+      const grid = XLSX.utils.sheet_to_json<unknown[]>(sheet!, { header: 1, defval: "", raw: false });
+      const cell = (v: unknown) => String(v ?? "").trim();
+      const head = (grid[0] ?? []).map((v) => cell(v).toLowerCase());
+      let iNama = head.findIndex((h) => ["nama", "name", "judul"].includes(h));
+      let iUrl = head.findIndex((h) => ["url", "link", "tautan"].includes(h));
+      let start = 1;
+      if (iNama < 0 || iUrl < 0) {
+        iNama = 0;
+        iUrl = 1;
+        start = 0; // tanpa header: baris pertama ikut dibaca
+      }
+      const seen = new Set(rows.map((r) => r.url.trim().toLowerCase()));
+      const valid: ImportRow[] = [];
+      let skipped = 0;
+      for (const r of grid.slice(start)) {
+        const nama = cell(r[iNama]);
+        const url = cell(r[iUrl]);
+        if (!nama && !url) continue;
+        if (!nama || !url) {
+          skipped++;
+          continue;
+        }
+        const u = normUrl(url);
+        const key = u.toLowerCase();
+        if (seen.has(key)) {
+          skipped++;
+          continue;
+        }
+        seen.add(key);
+        valid.push({ nama, url: u });
+      }
+      if (valid.length === 0) {
+        toast.error(
+          skipped > 0
+            ? `Tidak ada link baru (${skipped} baris kosong/duplikat dilewati).`
+            : "Tidak ada data yang bisa diimport. Pastikan ada kolom nama dan url.",
+        );
+        return;
+      }
+      setImportRows(valid);
+      setImportSkipped(skipped);
+      setImportOpen(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal membaca file.");
+    }
+  }
+
+  async function confirmImport() {
+    setImporting(true);
+    const { error } = await supabase.from("links").insert(importRows);
+    setImporting(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success(`${importRows.length} link diimport.`);
+    setImportOpen(false);
+    setImportRows([]);
+    void load();
   }
 
   function openCreate() {
@@ -145,12 +222,25 @@ function LinksPage() {
               <Download className="mr-2 h-4 w-4" /> Export
             </Button>
             {isAdmin && (
+              <Button variant="outline" onClick={() => fileRef.current?.click()}>
+                <Upload className="mr-2 h-4 w-4" /> Import
+              </Button>
+            )}
+            {isAdmin && (
               <Button onClick={openCreate}>
                 <Plus className="mr-2 h-4 w-4" /> Tambah Link
               </Button>
             )}
           </div>
         }
+      />
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".xlsx,.xls,.csv"
+        className="hidden"
+        onChange={(e) => void onPickFile(e)}
       />
 
       <div className="relative mb-4 w-full max-w-xs">
@@ -249,6 +339,38 @@ function LinksPage() {
             </Button>
             <Button onClick={save} disabled={saving}>
               {saving ? "Menyimpan..." : "Simpan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Import {importRows.length} link?</DialogTitle>
+            <DialogDescription>
+              Link ditambahkan ke daftar yang sudah ada (data lama tidak dihapus).
+              {importSkipped > 0 && ` ${importSkipped} baris dilewati karena kosong atau URL sudah ada.`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-64 overflow-auto rounded-md border text-xs">
+            <table className="w-full">
+              <tbody>
+                {importRows.map((r, i) => (
+                  <tr key={i} className="border-t first:border-t-0">
+                    <td className="px-3 py-1.5 font-medium">{r.nama}</td>
+                    <td className="break-all px-3 py-1.5 text-muted-foreground">{r.url}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportOpen(false)}>
+              Batal
+            </Button>
+            <Button onClick={confirmImport} disabled={importing}>
+              {importing ? "Mengimport..." : `Import ${importRows.length} link`}
             </Button>
           </DialogFooter>
         </DialogContent>
