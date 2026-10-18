@@ -39,13 +39,46 @@ async function handle(request: Request): Promise<Response> {
     args: Record<string, unknown>,
   ) => Promise<{ data: unknown; error: { message: string } | null }>;
 
-  // ---- QRIS Cabang (branch = 285) / Mikro (selain itu): daftar baris ----
-  if (wantRows && cat === "qris" && (field === "__qris_cabang__" || field === "__qris_mikro__")) {
-    const wantCabang = field === "__qris_cabang__";
-    const isCabang = (v: unknown) => /^285(\.0+)?$/.test(String(v ?? "").trim());
+  // ---- QRIS: Cabang (branch = 285) / Mikro (selain itu), total & Produktif (status_qris) ----
+  const QRIS_SPLIT: Record<string, { cabang: boolean; produktif: boolean }> = {
+    __qris_cabang__: { cabang: true, produktif: false },
+    __qris_mikro__: { cabang: false, produktif: false },
+    __qris_cabang_produktif__: { cabang: true, produktif: true },
+    __qris_mikro_produktif__: { cabang: false, produktif: true },
+  };
+  const isCabang = (v: unknown) => /^285(\.0+)?$/.test(String(v ?? "").trim());
+  const isProduktif = (v: unknown) => String(v ?? "").trim().toLowerCase() === "produktif";
+
+  // Hitung: {cabangProduktif, mikroProduktif} dalam satu kali baca (hanya 2 kolom).
+  if (cat === "qris" && field === "__qris_split__") {
+    let cabangProduktif = 0;
+    let mikroProduktif = 0;
+    const chunk = 1000;
+    for (let i = 0; i < 1000; i++) {
+      const { data, error } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .from(table as any)
+        .select("branch,status_qris")
+        .order("id", { ascending: true })
+        .range(i * chunk, i * chunk + chunk - 1);
+      if (error) return json({ error: error.message }, 400);
+      const part = (data ?? []) as unknown as Record<string, unknown>[];
+      for (const r of part) {
+        if (!isProduktif(r["status_qris"])) continue;
+        if (isCabang(r["branch"])) cabangProduktif++;
+        else mikroProduktif++;
+      }
+      if (part.length < chunk) break;
+    }
+    return json({ cabangProduktif, mikroProduktif });
+  }
+
+  // Daftar baris untuk popup.
+  if (wantRows && cat === "qris" && QRIS_SPLIT[field]) {
+    const want = QRIS_SPLIT[field]!;
     const picked: Record<string, unknown>[] = [];
     const chunk = 1000;
-    for (let i = 0; i < 100 && picked.length < 5000; i++) {
+    for (let i = 0; i < 1000 && picked.length < 5000; i++) {
       const { data, error } = await supabase
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .from(table as any)
@@ -55,7 +88,9 @@ async function handle(request: Request): Promise<Response> {
       if (error) return json({ error: error.message }, 400);
       const part = (data ?? []) as unknown as Record<string, unknown>[];
       for (const r of part) {
-        if (isCabang(r["branch"]) === wantCabang) picked.push(r);
+        if (isCabang(r["branch"]) !== want.cabang) continue;
+        if (want.produktif && !isProduktif(r["status_qris"])) continue;
+        picked.push(r);
       }
       if (part.length < chunk) break;
     }
