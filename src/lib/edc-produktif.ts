@@ -1,6 +1,6 @@
-// Tabel "EDC PRODUKTIF" di halaman Data Categories > EDC.
+// Tabel "EDC PRODUKTIF" dan "QRIS PRODUKTIF" di halaman Data Categories.
 // Rumus (sama dengan permintaan / sheet):
-//   TOTAL PRODUKTIF      = SUDAH PRODUKTIF + EDC PRODUKTIF (tanggal terbaru)
+//   TOTAL PRODUKTIF      = SUDAH PRODUKTIF + EDC/QRIS PRODUKTIF (tanggal terbaru)
 //   GAP THD RKA          = TOTAL PRODUKTIF - RKA
 //   % THD RKA            = TOTAL PRODUKTIF / RKA x 100
 //   ASPIRASI 110%        = RKA x 110%
@@ -12,8 +12,8 @@ export type EdcRow = {
   populasi: number | null;
   rka: number | null;
   sudah: number | null; // sudah produktif s/d tanggal tertentu
-  edc: number | null; // EDC produktif tanggal terbaru
-  /** true = Populasi & Sudah Produktif diambil otomatis dari statistik data EDC. */
+  edc: number | null; // EDC/QRIS produktif tanggal terbaru
+  /** true = Populasi & Sudah Produktif diambil otomatis dari statistik data. */
   auto?: boolean;
 };
 
@@ -25,6 +25,7 @@ export type EdcProdukCfg = {
 };
 
 export const EDC_PRODUK_KEY = "ui_edc_produktif";
+export const QRIS_PRODUK_KEY = "ui_qris_produktif";
 
 export const DEFAULT_CFG: EdcProdukCfg = {
   title: "EDC PRODUKTIF",
@@ -43,6 +44,28 @@ export const DEFAULT_CFG: EdcProdukCfg = {
     "Aspirasi 110%",
   ],
   rows: [{ nama: "CABANG ONLY", populasi: 518, rka: 242, sudah: 211, edc: null, auto: true }],
+};
+
+export const QRIS_DEFAULT_CFG: EdcProdukCfg = {
+  title: "QRIS PRODUKTIF",
+  headers: [
+    "NO",
+    "BO TELUK BETUNG",
+    "POPULASI",
+    "RKA SEPT 2026",
+    "SUDAH PRODUKTIF S/D {posisi}",
+    "QRIS PRODUKTIF 23 SEPT 2026",
+    "TOTAL PRODUKTIF",
+    "GAP THD RKA SEPT 2026",
+    "% THD RKA SEPT 2026",
+    "GAP THD RKA 110%",
+    "% THD RKA SEPT 110%",
+    "Aspirasi 110%",
+  ],
+  rows: [
+    { nama: "CABANG ONLY", populasi: 4881, rka: 1127, sudah: 805, edc: null, auto: true },
+    { nama: "MIKRO", populasi: 13599, rka: 2744, sudah: 2862, edc: null, auto: false },
+  ],
 };
 
 export type EdcCalc = {
@@ -87,11 +110,11 @@ export function calcTotal(rows: EdcRow[]): EdcCalc {
 }
 
 /** Gabungkan data tersimpan dengan default supaya aman bila formatnya berbeda. */
-export function parseCfg(raw: string | null | undefined): EdcProdukCfg {
-  if (!raw) return DEFAULT_CFG;
+export function parseCfg(raw: string | null | undefined, def: EdcProdukCfg = DEFAULT_CFG): EdcProdukCfg {
+  if (!raw) return def;
   try {
     const o = JSON.parse(raw) as Partial<EdcProdukCfg>;
-    const headers = DEFAULT_CFG.headers.map((h, i) =>
+    const headers = def.headers.map((h, i) =>
       typeof o.headers?.[i] === "string" ? (o.headers[i] as string) : h,
     );
     const rows = Array.isArray(o.rows)
@@ -103,15 +126,15 @@ export function parseCfg(raw: string | null | undefined): EdcProdukCfg {
           sudah: typeof r?.sudah === "number" ? r.sudah : null,
           edc: typeof r?.edc === "number" ? r.edc : null,
         }))
-      : DEFAULT_CFG.rows;
-    return { title: typeof o.title === "string" ? o.title : DEFAULT_CFG.title, headers, rows };
+      : def.rows;
+    return { title: typeof o.title === "string" ? o.title : def.title, headers, rows };
   } catch {
-    return DEFAULT_CFG;
+    return def;
   }
 }
 
 // ---------------------------------------------------------------------------
-// Tanggal dari kolom "posisi" data EDC -> "20 SEPTEMBER 2026"
+// Tanggal dari kolom "posisi" data -> "20 SEPTEMBER 2026"
 // ---------------------------------------------------------------------------
 const BULAN = [
   "JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI",

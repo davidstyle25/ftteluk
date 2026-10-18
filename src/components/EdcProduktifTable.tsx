@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 import {
   DEFAULT_CFG,
   EDC_PRODUK_KEY,
+  QRIS_DEFAULT_CFG,
+  QRIS_PRODUK_KEY,
   calcRow,
   calcTotal,
   formatPosisi,
@@ -24,7 +26,7 @@ const HEAD_BG = [
   "#A9E8E3", // POPULASI
   "#FFFF00", // RKA
   "#00B050", // SUDAH PRODUKTIF
-  "#FFE0A3", // EDC PRODUKTIF tgl terbaru
+  "#FFE0A3", // EDC/QRIS PRODUKTIF tgl terbaru
   "#8496B0", // TOTAL PRODUKTIF
   "#FFFF00", // GAP THD RKA
   "#FFFF00", // % THD RKA
@@ -36,7 +38,7 @@ const HEAD_BG = [
 const fmt = (v: number, max = 0, min = 0) =>
   v.toLocaleString("en-US", { minimumFractionDigits: min, maximumFractionDigits: max });
 
-// Statistik EDC (sama dengan kartu di atas tabel): Total EDC, EDC Produktif, dan tanggal posisi data.
+// Statistik (sama dengan kartu di atas tabel): total data, jumlah produktif/aktif, dan tanggal posisi data.
 type EdcStats = { total: number; produktif: number; posisi: string | null };
 
 type Counts = { value: string | null; count: number | string }[];
@@ -46,17 +48,26 @@ const rpc = supabase.rpc.bind(supabase) as unknown as (
   args: Record<string, unknown>,
 ) => Promise<{ data: unknown; error: { message: string } | null }>;
 
-async function loadStats(): Promise<EdcStats> {
+export type ProduktifVariant = "edc" | "qris";
+
+// EDC: produktif = status_edc "Produktif". QRIS: produktif = status "AKTIF".
+const VARIANTS = {
+  edc: { table: "data_edc", field: "status_edc", match: "produktif", key: EDC_PRODUK_KEY, def: DEFAULT_CFG, totalLabel: "TOTAL" },
+  qris: { table: "data_qris", field: "status", match: "aktif", key: QRIS_PRODUK_KEY, def: QRIS_DEFAULT_CFG, totalLabel: "KONSOLIDASI" },
+} as const;
+
+async function loadStats(variant: ProduktifVariant): Promise<EdcStats> {
+  const v = VARIANTS[variant];
   const [tot, st, pos] = await Promise.all([
-    supabase.from("data_edc").select("*", { count: "exact", head: true }),
-    rpc("field_value_counts", { _table: "data_edc", _field: "status_edc" }),
-    rpc("field_value_counts", { _table: "data_edc", _field: "posisi" }),
+    supabase.from(v.table).select("*", { count: "exact", head: true }),
+    rpc("field_value_counts", { _table: v.table, _field: v.field }),
+    rpc("field_value_counts", { _table: v.table, _field: "posisi" }),
   ]);
   const statusRows = (st.data ?? []) as Counts;
   const produktif = statusRows
-    .filter((r) => (r.value ?? "").trim().toLowerCase() === "produktif")
+    .filter((r) => (r.value ?? "").trim().toLowerCase() === v.match)
     .reduce((sum, r) => sum + Number(r.count), 0);
-  // Tanggal posisi = nilai posisi yang paling banyak muncul (data EDC biasanya satu tanggal saja).
+  // Tanggal posisi = nilai posisi yang paling banyak muncul (data biasanya satu tanggal saja).
   const posRows = ((pos.data ?? []) as Counts).filter((r) => (r.value ?? "").trim() !== "");
   posRows.sort((a, b) => Number(b.count) - Number(a.count));
   return {
@@ -174,16 +185,23 @@ function ResultCells({ c }: { c: EdcCalc }) {
   );
 }
 
-/** Tabel EDC PRODUKTIF: judul & isi bisa diedit admin, kolom hasil dihitung otomatis. */
-export function EdcProduktifTable({ canEdit }: { canEdit: boolean }) {
-  const [cfg, setCfg] = useState<EdcProdukCfg>(DEFAULT_CFG);
+/** Tabel EDC / QRIS PRODUKTIF: judul & isi bisa diedit admin, kolom hasil dihitung otomatis. */
+export function EdcProduktifTable({
+  canEdit,
+  variant = "edc",
+}: {
+  canEdit: boolean;
+  variant?: ProduktifVariant;
+}) {
+  const V = VARIANTS[variant];
+  const [cfg, setCfg] = useState<EdcProdukCfg>(V.def);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [stats, setStats] = useState<EdcStats | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    loadStats()
+    loadStats(variant)
       .then((r) => {
         if (!cancelled) setStats(r);
       })
@@ -193,24 +211,24 @@ export function EdcProduktifTable({ canEdit }: { canEdit: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [variant]);
 
   useEffect(() => {
     let cancelled = false;
     supabase
       .from("settings")
       .select("value")
-      .eq("key", EDC_PRODUK_KEY)
+      .eq("key", V.key)
       .maybeSingle()
       .then(({ data }) => {
-        if (!cancelled && data?.value) setCfg(parseCfg(data.value));
+        if (!cancelled && data?.value) setCfg(parseCfg(data.value, V.def));
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [V]);
 
-  // Baris "otomatis": Populasi = Total EDC, Sudah Produktif = EDC Produktif (dari statistik data EDC).
+  // Baris "otomatis": Populasi = Total data, Sudah Produktif = jumlah Produktif/AKTIF (dari statistik data).
   const effRows = useMemo(
     () =>
       cfg.rows.map((r) =>
@@ -243,7 +261,7 @@ export function EdcProduktifTable({ canEdit }: { canEdit: boolean }) {
     const { error } = await supabase
       .from("settings")
       .upsert(
-        { key: EDC_PRODUK_KEY, value: JSON.stringify(cfg), updated_at: new Date().toISOString() },
+        { key: V.key, value: JSON.stringify(cfg), updated_at: new Date().toISOString() },
         { onConflict: "key" },
       );
     setSaving(false);
@@ -251,7 +269,7 @@ export function EdcProduktifTable({ canEdit }: { canEdit: boolean }) {
       toast.error(error.message);
       return;
     }
-    toast.success("Tabel EDC Produktif disimpan.");
+    toast.success("Tabel disimpan.");
     setDirty(false);
   }
 
@@ -328,7 +346,7 @@ export function EdcProduktifTable({ canEdit }: { canEdit: boolean }) {
                   <td
                     key={k}
                     className={cn(cell, r.auto && (k === "populasi" || k === "sudah") && "bg-sky-50")}
-                    title={r.auto && (k === "populasi" || k === "sudah") ? "Otomatis dari statistik EDC" : undefined}
+                    title={r.auto && (k === "populasi" || k === "sudah") ? "Otomatis dari statistik data" : undefined}
                   >
                     {r.auto && (k === "populasi" || k === "sudah") ? (
                       <span className="block px-2 py-2 text-center tabular-nums">
@@ -355,10 +373,10 @@ export function EdcProduktifTable({ canEdit }: { canEdit: boolean }) {
                       )}
                       title={
                         r.auto
-                          ? "Populasi & Sudah Produktif otomatis dari statistik EDC (klik untuk isi manual)"
-                          : "Klik agar Populasi & Sudah Produktif otomatis dari statistik EDC"
+                          ? "Populasi & Sudah Produktif otomatis dari statistik data (klik untuk isi manual)"
+                          : "Klik agar Populasi & Sudah Produktif otomatis dari statistik data"
                       }
-                      aria-label="Otomatis dari statistik EDC"
+                      aria-label="Otomatis dari statistik data"
                     >
                       <Zap className="h-4 w-4" />
                     </button>
@@ -377,7 +395,7 @@ export function EdcProduktifTable({ canEdit }: { canEdit: boolean }) {
             {cfg.rows.length > 1 && (
               <tr className="bg-muted/50 font-bold">
                 <td className={cn(cell, "px-2 py-2")} colSpan={2}>
-                  TOTAL
+                  {V.totalLabel}
                 </td>
                 <td className={cn(cell, "px-2 py-2 text-center tabular-nums")}>{fmt(total.populasi, 2)}</td>
                 <td className={cn(cell, "px-2 py-2 text-center tabular-nums")}>{fmt(total.rka, 2)}</td>
@@ -400,10 +418,10 @@ export function EdcProduktifTable({ canEdit }: { canEdit: boolean }) {
 
       {canEdit && (
         <p className="border-t px-4 py-2 text-xs text-muted-foreground">
-          Judul, nama kolom, dan angka bisa diedit. Baris dengan ikon petir (biru): Populasi = Total EDC dan
-          Sudah Produktif = EDC Produktif diambil otomatis dari statistik data EDC; klik ikon petir untuk
+          Judul, nama kolom, dan angka bisa diedit. Baris dengan ikon petir (biru): Populasi = Total data dan
+          Sudah Produktif = jumlah Produktif/AKTIF diambil otomatis dari statistik data; klik ikon petir untuk
           mengisinya manual. Tulis {"{posisi}"} (dengan kurung kurawal) di judul kolom agar tanggalnya otomatis dari
-          kolom Posisi data EDC; klik di luar kotak untuk melihat hasilnya. Kolom Total, Gap, %, dan Aspirasi dihitung otomatis. Jangan lupa klik Simpan.
+          kolom Posisi data; klik di luar kotak untuk melihat hasilnya. Kolom Total, Gap, %, dan Aspirasi dihitung otomatis. Jangan lupa klik Simpan.
         </p>
       )}
     </section>

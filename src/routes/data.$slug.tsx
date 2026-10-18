@@ -203,7 +203,8 @@ function DataCategoryPage() {
 
       {(slug === "edc" || slug === "qris") && <CategoryStats slug={slug} />}
 
-      {slug === "edc" && <EdcProduktifTable canEdit={isAdmin} />}
+      {slug === "edc" && <EdcProduktifTable canEdit={isAdmin} variant="edc" />}
+      {slug === "qris" && <EdcProduktifTable canEdit={isAdmin} variant="qris" />}
 
       {!isCompareResult && !isTimeSeries && !(slug === "edc" || slug === "qris") && (
         <div
