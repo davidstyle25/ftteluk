@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Save, Trash2 } from "lucide-react";
+import { Plus, Save, Trash2, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,9 @@ import {
   EDC_PRODUK_KEY,
   calcRow,
   calcTotal,
+  formatPosisi,
   parseCfg,
+  resolveHeader,
   type EdcCalc,
   type EdcProdukCfg,
   type EdcRow,
@@ -33,6 +35,36 @@ const HEAD_BG = [
 
 const fmt = (v: number, max = 0, min = 0) =>
   v.toLocaleString("en-US", { minimumFractionDigits: min, maximumFractionDigits: max });
+
+// Statistik EDC (sama dengan kartu di atas tabel): Total EDC, EDC Produktif, dan tanggal posisi data.
+type EdcStats = { total: number; produktif: number; posisi: string | null };
+
+type Counts = { value: string | null; count: number | string }[];
+// RPC field_value_counts belum ada di types.ts hasil generate -> longgarkan tipe.
+const rpc = supabase.rpc.bind(supabase) as unknown as (
+  fn: string,
+  args: Record<string, unknown>,
+) => Promise<{ data: unknown; error: { message: string } | null }>;
+
+async function loadStats(): Promise<EdcStats> {
+  const [tot, st, pos] = await Promise.all([
+    supabase.from("data_edc").select("*", { count: "exact", head: true }),
+    rpc("field_value_counts", { _table: "data_edc", _field: "status_edc" }),
+    rpc("field_value_counts", { _table: "data_edc", _field: "posisi" }),
+  ]);
+  const statusRows = (st.data ?? []) as Counts;
+  const produktif = statusRows
+    .filter((r) => (r.value ?? "").trim().toLowerCase() === "produktif")
+    .reduce((sum, r) => sum + Number(r.count), 0);
+  // Tanggal posisi = nilai posisi yang paling banyak muncul (data EDC biasanya satu tanggal saja).
+  const posRows = ((pos.data ?? []) as Counts).filter((r) => (r.value ?? "").trim() !== "");
+  posRows.sort((a, b) => Number(b.count) - Number(a.count));
+  return {
+    total: tot.count ?? 0,
+    produktif,
+    posisi: formatPosisi(posRows[0]?.value ?? null),
+  };
+}
 
 const rawText = (v: number | null) => (v == null ? "" : String(Math.round(v * 1e6) / 1e6));
 
@@ -123,6 +155,21 @@ export function EdcProduktifTable({ canEdit }: { canEdit: boolean }) {
   const [cfg, setCfg] = useState<EdcProdukCfg>(DEFAULT_CFG);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [stats, setStats] = useState<EdcStats | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadStats()
+      .then((r) => {
+        if (!cancelled) setStats(r);
+      })
+      .catch(() => {
+        if (!cancelled) setStats({ total: 0, produktif: 0, posisi: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,8 +186,16 @@ export function EdcProduktifTable({ canEdit }: { canEdit: boolean }) {
     };
   }, []);
 
-  const calcs = useMemo(() => cfg.rows.map(calcRow), [cfg.rows]);
-  const total = useMemo(() => calcTotal(cfg.rows), [cfg.rows]);
+  // Baris "otomatis": Populasi = Total EDC, Sudah Produktif = EDC Produktif (dari statistik data EDC).
+  const effRows = useMemo(
+    () =>
+      cfg.rows.map((r) =>
+        r.auto ? { ...r, populasi: stats?.total ?? 0, sudah: stats?.produktif ?? 0 } : r,
+      ),
+    [cfg.rows, stats],
+  );
+  const calcs = useMemo(() => effRows.map(calcRow), [effRows]);
+  const total = useMemo(() => calcTotal(effRows), [effRows]);
 
   function patch(next: Partial<EdcProdukCfg>) {
     setCfg((c) => ({ ...c, ...next }));
@@ -153,7 +208,7 @@ export function EdcProduktifTable({ canEdit }: { canEdit: boolean }) {
     patch({ rows: cfg.rows.map((r, idx) => (idx === i ? { ...r, ...p } : r)) });
   }
   function addRow() {
-    patch({ rows: [...cfg.rows, { nama: "", populasi: null, rka: null, sudah: null, edc: null }] });
+    patch({ rows: [...cfg.rows, { nama: "", populasi: null, rka: null, sudah: null, edc: null, auto: false }] });
   }
   function removeRow(i: number) {
     patch({ rows: cfg.rows.filter((_, idx) => idx !== i) });
@@ -222,11 +277,13 @@ export function EdcProduktifTable({ canEdit }: { canEdit: boolean }) {
                       className="w-full resize-none bg-transparent px-2 py-2 text-center font-bold text-black outline-none focus:bg-white/50"
                     />
                   ) : (
-                    <span className="block whitespace-pre-line px-2 py-3">{h}</span>
+                    <span className="block whitespace-pre-line px-2 py-3">
+                      {resolveHeader(h, stats ? (stats.posisi ?? "-") : null)}
+                    </span>
                   )}
                 </th>
               ))}
-              {canEdit && <th className={cn(cell, "w-8 bg-muted/40")} />}
+              {canEdit && <th className={cn(cell, "w-16 bg-muted/40")} />}
             </tr>
           </thead>
           <tbody>
@@ -245,8 +302,16 @@ export function EdcProduktifTable({ canEdit }: { canEdit: boolean }) {
                   )}
                 </td>
                 {(["populasi", "rka", "sudah", "edc"] as const).map((k) => (
-                  <td key={k} className={cell}>
-                    {canEdit ? (
+                  <td
+                    key={k}
+                    className={cn(cell, r.auto && (k === "populasi" || k === "sudah") && "bg-sky-50")}
+                    title={r.auto && (k === "populasi" || k === "sudah") ? "Otomatis dari statistik EDC" : undefined}
+                  >
+                    {r.auto && (k === "populasi" || k === "sudah") ? (
+                      <span className="block px-2 py-2 text-center tabular-nums">
+                        {stats ? fmt(effRows[i]![k] ?? 0, 2) : "…"}
+                      </span>
+                    ) : canEdit ? (
                       <NumInput value={r[k]} onCommit={(v) => setRow(i, { [k]: v } as Partial<EdcRow>)} />
                     ) : (
                       <span className="block px-2 py-2 text-center tabular-nums">
@@ -257,7 +322,23 @@ export function EdcProduktifTable({ canEdit }: { canEdit: boolean }) {
                 ))}
                 <ResultCells c={calcs[i]!} />
                 {canEdit && (
-                  <td className={cn(cell, "text-center")}>
+                  <td className={cn(cell, "whitespace-nowrap px-1 text-center")}>
+                    <button
+                      type="button"
+                      onClick={() => setRow(i, { auto: !r.auto })}
+                      className={cn(
+                        "p-1 hover:text-primary",
+                        r.auto ? "text-primary" : "text-muted-foreground",
+                      )}
+                      title={
+                        r.auto
+                          ? "Populasi & Sudah Produktif otomatis dari statistik EDC (klik untuk isi manual)"
+                          : "Klik agar Populasi & Sudah Produktif otomatis dari statistik EDC"
+                      }
+                      aria-label="Otomatis dari statistik EDC"
+                    >
+                      <Zap className="h-4 w-4" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => removeRow(i)}
@@ -296,8 +377,10 @@ export function EdcProduktifTable({ canEdit }: { canEdit: boolean }) {
 
       {canEdit && (
         <p className="border-t px-4 py-2 text-xs text-muted-foreground">
-          Judul, nama kolom, dan angka (Populasi, RKA, Sudah Produktif, EDC Produktif) bisa diedit. Kolom
-          Total, Gap, %, dan Aspirasi dihitung otomatis. Jangan lupa klik Simpan.
+          Judul, nama kolom, dan angka bisa diedit. Baris dengan ikon petir (biru): Populasi = Total EDC dan
+          Sudah Produktif = EDC Produktif diambil otomatis dari statistik data EDC; klik ikon petir untuk
+          mengisinya manual. Tulis {"{posisi}"} di judul kolom agar tanggalnya otomatis dari kolom Posisi
+          data EDC. Kolom Total, Gap, %, dan Aspirasi dihitung otomatis. Jangan lupa klik Simpan.
         </p>
       )}
     </section>
