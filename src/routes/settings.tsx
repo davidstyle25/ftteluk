@@ -23,7 +23,7 @@ function SettingsPage() {
       .from("settings")
       .select("id,key,value")
       .order("id")
-      .then(({ data }) => setRows(data ?? []));
+      .then(({ data }) => setRows((data ?? []).filter((s) => !s.key.startsWith("ui_"))));
   }, []);
 
   return (

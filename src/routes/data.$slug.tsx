@@ -13,6 +13,7 @@ import { AverageGiroView } from "@/components/AverageGiroView";
 import { EdcQrisView, PROD_CFG, SV_CFG } from "@/components/EdcQrisView";
 import { TimeSeriesView } from "@/components/TimeSeriesView";
 import { CategoryStats } from "@/components/CategoryStats";
+import { EdcProduktifTable } from "@/components/EdcProduktifTable";
 import { ValasGiroCard } from "@/components/ValasGiroCard";
 import { Button } from "@/components/ui/button";
 import {
@@ -201,6 +202,8 @@ function DataCategoryPage() {
       />
 
       {(slug === "edc" || slug === "qris") && <CategoryStats slug={slug} />}
+
+      {slug === "edc" && <EdcProduktifTable canEdit={isAdmin} />}
 
       {!isCompareResult && !isTimeSeries && !(slug === "edc" || slug === "qris") && (
         <div
