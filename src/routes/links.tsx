@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, Trash2, ExternalLink, Search } from "lucide-react";
+import { Pencil, Plus, Trash2, ExternalLink, Search, Download } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/AppLayout";
@@ -72,6 +72,22 @@ function LinksPage() {
     void load();
   }, [load]);
 
+  async function exportExcel() {
+    if (filtered.length === 0) {
+      toast.error("Tidak ada data untuk diexport.");
+      return;
+    }
+    const XLSX = await import("xlsx");
+    const aoa = [["No", "Nama", "URL"], ...filtered.map((r, i) => [i + 1, r.nama, r.url])];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [{ wch: 6 }, { wch: 32 }, { wch: 70 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Links");
+    const tgl = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `links-${tgl}.xlsx`);
+    toast.success(`${filtered.length} link diexport.`);
+  }
+
   function openCreate() {
     setEditing(null);
     setNama("");
@@ -124,11 +140,16 @@ function LinksPage() {
         title="System Links"
         description="Manage external URLs and resources."
         actions={
-          isAdmin ? (
-            <Button onClick={openCreate}>
-              <Plus className="mr-2 h-4 w-4" /> Tambah Link
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => void exportExcel()}>
+              <Download className="mr-2 h-4 w-4" /> Export
             </Button>
-          ) : undefined
+            {isAdmin && (
+              <Button onClick={openCreate}>
+                <Plus className="mr-2 h-4 w-4" /> Tambah Link
+              </Button>
+            )}
+          </div>
         }
       />
 
