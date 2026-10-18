@@ -120,6 +120,30 @@ function NumInput({
   );
 }
 
+// Judul kolom yang bisa diedit. Saat diketik tampil teks mentah (termasuk {posisi});
+// setelah selesai (klik di luar) tampil hasilnya, mis. "... S/D 20 SEPTEMBER 2026".
+function HeaderEditor({
+  value,
+  resolved,
+  onChange,
+}: {
+  value: string;
+  resolved: string;
+  onChange: (v: string) => void;
+}) {
+  const [focus, setFocus] = useState(false);
+  return (
+    <textarea
+      value={focus ? value : resolved}
+      rows={3}
+      onFocus={() => setFocus(true)}
+      onBlur={() => setFocus(false)}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full resize-none bg-transparent px-2 py-2 text-center text-[8pt] font-bold leading-tight text-black outline-none focus:bg-white/50"
+    />
+  );
+}
+
 // Sel hasil hitung: merah muda bila di bawah target, hijau bila sudah tercapai (seperti sheet).
 function CalcCell({ value, text }: { value: number; text: string }) {
   const bad = value < 0;
@@ -270,14 +294,13 @@ export function EdcProduktifTable({ canEdit }: { canEdit: boolean }) {
                   style={{ backgroundColor: HEAD_BG[i] }}
                 >
                   {canEdit ? (
-                    <textarea
+                    <HeaderEditor
                       value={h}
-                      rows={3}
-                      onChange={(e) => setHeader(i, e.target.value)}
-                      className="w-full resize-none bg-transparent px-2 py-2 text-center font-bold text-black outline-none focus:bg-white/50"
+                      resolved={resolveHeader(h, stats ? (stats.posisi ?? "-") : null)}
+                      onChange={(v) => setHeader(i, v)}
                     />
                   ) : (
-                    <span className="block whitespace-pre-line px-2 py-3">
+                    <span className="block whitespace-pre-line px-2 py-3 text-[8pt] leading-tight">
                       {resolveHeader(h, stats ? (stats.posisi ?? "-") : null)}
                     </span>
                   )}
@@ -379,8 +402,8 @@ export function EdcProduktifTable({ canEdit }: { canEdit: boolean }) {
         <p className="border-t px-4 py-2 text-xs text-muted-foreground">
           Judul, nama kolom, dan angka bisa diedit. Baris dengan ikon petir (biru): Populasi = Total EDC dan
           Sudah Produktif = EDC Produktif diambil otomatis dari statistik data EDC; klik ikon petir untuk
-          mengisinya manual. Tulis {"{posisi}"} di judul kolom agar tanggalnya otomatis dari kolom Posisi
-          data EDC. Kolom Total, Gap, %, dan Aspirasi dihitung otomatis. Jangan lupa klik Simpan.
+          mengisinya manual. Tulis {"{posisi}"} (dengan kurung kurawal) di judul kolom agar tanggalnya otomatis dari
+          kolom Posisi data EDC; klik di luar kotak untuk melihat hasilnya. Kolom Total, Gap, %, dan Aspirasi dihitung otomatis. Jangan lupa klik Simpan.
         </p>
       )}
     </section>
