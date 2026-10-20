@@ -145,10 +145,11 @@ function DataCategoryPage() {
       all.push(...part);
       if (part.length < chunk) break;
     }
-    // Kolom internal balance_asli (penyimpan balance sebelum dikali kurs) tidak ikut di file.
+    // Kolom internal balance_asli (balance sebelum dikali kurs) dan balance_num (untuk urut angka) tidak ikut di file.
     const rows = all.map((r) => {
-      const { balance_asli: _asli, ...rest } = r;
+      const { balance_asli: _asli, balance_num: _num, ...rest } = r;
       void _asli;
+      void _num;
       return rest;
     });
     exportTableCsv(rows, `${slug}.xlsx`);

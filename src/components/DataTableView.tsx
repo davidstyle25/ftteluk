@@ -32,6 +32,10 @@ const PAGE_SIZES = [10, 25, 50, 100];
 
 const NUMERIC = new Set(["decimal", "int", "bigint"]);
 
+// DI319: kolom balance bertipe text -> urut angka lewat kolom turunan balance_num
+// (dibuat oleh supabase/07_di319_balance_sort.sql).
+const NUM_SORT_TABLE = /^data_di319_data[1-4]$/;
+
 function toNumber(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(String(value).replace(/\./g, "").replace(",", "."));
@@ -103,15 +107,25 @@ export function DataTableView({
         .select("*", { count: "exact" })
         .range(page * pageSize, page * pageSize + pageSize - 1);
       if (query && searchColumns.length) {
-                // Nilai dibungkus tanda kutip agar koma/kurung/titik di teks pencarian tidak merusak filter.
+        // Nilai dibungkus tanda kutip agar koma/kurung/titik di teks pencarian tidak merusak filter.
         const q = query.trim().replace(/[\\"]/g, "\\$&");
         req = req.or(searchColumns.map((c) => `${c}.ilike."%${q}%"`).join(","));
       }
-      if (sort) req = req.order(sort.col, { ascending: sort.asc });
-      else req = req.order("id", { ascending: true });
+      if (sort) {
+        const numeric = sort.col === "balance" && NUM_SORT_TABLE.test(table);
+        req = req.order(numeric ? "balance_num" : sort.col, {
+          ascending: sort.asc,
+          nullsFirst: false,
+        });
+      } else req = req.order("id", { ascending: true });
       const { data, error, count } = await req;
       if (cancelled) return;
-      if (error) toast.error("Gagal memuat data");
+      if (error)
+        toast.error(
+          sort?.col === "balance" && NUM_SORT_TABLE.test(table)
+            ? "Gagal memuat data. Jalankan supabase/07_di319_balance_sort.sql di Supabase Studio."
+            : "Gagal memuat data",
+        );
       else {
         setRows((data ?? []) as unknown as Row[]);
         setTotal(count ?? 0);
@@ -187,6 +201,24 @@ export function DataTableView({
           />
         </div>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          {NUM_SORT_TABLE.test(table) && (
+            <>
+              <span>Balance</span>
+              <select
+                value={sort?.col === "balance" ? (sort.asc ? "asc" : "desc") : ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setPage(0);
+                  setSort(v ? { col: "balance", asc: v === "asc" } : null);
+                }}
+                className="h-9 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+              >
+                <option value="">Urutan awal</option>
+                <option value="desc">Descending (terbesar → terkecil)</option>
+                <option value="asc">Ascending (terkecil → terbesar)</option>
+              </select>
+            </>
+          )}
           {canAdd && (
             <Button onClick={() => setEditing({} as Row)}>
               <Plus className="mr-2 size-4" /> Add Data
@@ -238,7 +270,15 @@ export function DataTableView({
                       }
                     >
                       {headerOverrides?.[c.field] ?? c.label}
-                      <ChevronsUpDown className="size-3.5 text-muted-foreground" />
+                      {sort?.col === c.field ? (
+                        sort.asc ? (
+                          <ChevronUp className="size-3.5 text-primary" />
+                        ) : (
+                          <ChevronDown className="size-3.5 text-primary" />
+                        )
+                      ) : (
+                        <ChevronsUpDown className="size-3.5 text-muted-foreground" />
+                      )}
                     </button>
                   </th>
                 ))}
