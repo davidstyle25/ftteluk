@@ -32,9 +32,9 @@ const PAGE_SIZES = [10, 25, 50, 100];
 
 const NUMERIC = new Set(["decimal", "int", "bigint"]);
 
-// DI319: kolom balance bertipe text -> urut angka lewat kolom turunan balance_num
-// (dibuat oleh supabase/07_di319_balance_sort.sql).
-const NUM_SORT_TABLE = /^data_di319_data[1-4]$/;
+// DI319 & DI321: kolom balance bertipe text -> urut angka lewat kolom turunan balance_num
+// (dibuat oleh supabase/07_di319_balance_sort.sql dan 08_di321_balance_sort.sql).
+const NUM_SORT_TABLE = /^data_di(319|321)_data[1-4]$/;
 
 function toNumber(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
@@ -123,7 +123,7 @@ export function DataTableView({
       if (error)
         toast.error(
           sort?.col === "balance" && NUM_SORT_TABLE.test(table)
-            ? "Gagal memuat data. Jalankan supabase/07_di319_balance_sort.sql di Supabase Studio."
+            ? "Gagal memuat data. Jalankan SQL urut Balance (07_di319_balance_sort.sql / 08_di321_balance_sort.sql) di Supabase Studio."
             : "Gagal memuat data",
         );
       else {
