@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { TABLE_COLUMNS } from "@/lib/table-columns";
+import { DATA_CATEGORIES } from "@/lib/data-catalog";
 import { cn } from "@/lib/utils";
 
 const norm = (s: string) =>
@@ -22,6 +23,23 @@ const norm = (s: string) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
+
+// Nama kolom alternatif di file: label kolom di tabel (mis. "Nama RM" -> kolom rm) dan sinonim umum.
+// Nama kolom database persis tetap diprioritaskan.
+const EXTRA_ALIASES: Record<string, string> = { nama_rm: "rm", nama: "rm" };
+function aliasMap(table: string): Map<string, string> {
+  const allowed = new Set(TABLE_COLUMNS[table] ?? []);
+  const map = new Map<string, string>();
+  const cat = DATA_CATEGORIES.find((c) => c.table === table);
+  for (const c of cat?.columns ?? []) {
+    const k = norm(c.label);
+    if (k && !allowed.has(k) && allowed.has(c.field)) map.set(k, c.field);
+  }
+  for (const [k, f] of Object.entries(EXTRA_ALIASES)) {
+    if (!allowed.has(k) && allowed.has(f) && !map.has(k)) map.set(k, f);
+  }
+  return map;
+}
 
 function parseCsv(text: string) {
   const clean = text.replace(/^\uFEFF/, "");
@@ -71,16 +89,23 @@ function buildCsvRows(text: string, table: string) {
   if (!header) throw new Error("File CSV kosong.");
   const allowed = TABLE_COLUMNS[table] ?? [];
   const allowedSet = new Set(allowed);
+  const aliases = aliasMap(table);
+  const direct = new Set(header.map((h) => norm(h)));
   const mapped: Record<string, string>[] = [];
   const unknown = new Set<string>();
 
   for (const line of grid) {
     const out: Record<string, string> = {};
     header.forEach((h, idx) => {
-      const col = norm(h);
+      let col = norm(h);
       if (!allowedSet.has(col)) {
-        if (h.trim()) unknown.add(h.trim());
-        return;
+        const alias = aliases.get(col);
+        // Pakai alias hanya bila file tidak punya kolom dengan nama database persis.
+        if (alias && !direct.has(alias)) col = alias;
+        else {
+          if (h.trim()) unknown.add(h.trim());
+          return;
+        }
       }
       out[col] = (line[idx] ?? "").trim();
     });
@@ -100,17 +125,24 @@ function buildRows(file: ArrayBuffer, table: string) {
   });
   const allowed = TABLE_COLUMNS[table] ?? [];
   const allowedSet = new Set(allowed);
+  const aliases = aliasMap(table);
 
   const mapped: Record<string, string>[] = [];
   const unknown = new Set<string>();
 
   for (const row of raw) {
     const out: Record<string, string> = {};
+    const direct = new Set(Object.keys(row).map((k) => norm(k)));
     for (const [key, value] of Object.entries(row)) {
-      const col = norm(key);
+      let col = norm(key);
       if (!allowedSet.has(col)) {
-        if (key.trim()) unknown.add(key.trim());
-        continue;
+        const alias = aliases.get(col);
+        // Pakai alias hanya bila file tidak punya kolom dengan nama database persis.
+        if (alias && !direct.has(alias)) col = alias;
+        else {
+          if (key.trim()) unknown.add(key.trim());
+          continue;
+        }
       }
       out[col] =
         value instanceof Date
@@ -198,7 +230,9 @@ export function ExcelUploadDialog({
 
       toast.success(
         `${rows.length.toLocaleString("id-ID")} baris berhasil diimpor ke ${label}.` +
-          (unknown.length ? ` ${unknown.length} kolom tidak dikenal diabaikan.` : ""),
+          (unknown.length
+            ? ` ${unknown.length} kolom tidak dikenal diabaikan: ${unknown.slice(0, 4).join(", ")}${unknown.length > 4 ? ", …" : ""}.`
+            : ""),
       );
       onImported?.();
       onOpenChange(false);
