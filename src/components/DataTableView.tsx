@@ -48,7 +48,8 @@ function formatCell(value: unknown, type: DataColumn["type"]) {
     const n = toNumber(value);
     return n === null ? String(value) : n.toLocaleString("id-ID");
   }
-  return String(value);
+  // Tanggal tanpa jam: "2026/8/31 0:00" -> "2026/8/31"
+  return String(value).replace(/^(\d{4}[/-]\d{1,2}[/-]\d{1,2})\s+0{1,2}:00(:00)?$/, "$1");
 }
 
 export function DataTableView({
