@@ -53,6 +53,8 @@ type CatCfg = {
   tglTables: [string, string, string, string];
   pnColumn: string;
   valueColumn: string;
+  /** Bila diisi: kolom tgl 1 = jumlah baris berstatus "Produktif" per nama user pemrakarsa (bukan jumlah nilai). */
+  countProduktifTgl1?: { nameColumn: string; statusColumn: string };
 };
 
 export const PROD_CFG: Record<"EDC" | "QRIS", CatCfg> = {
@@ -61,6 +63,7 @@ export const PROD_CFG: Record<"EDC" | "QRIS", CatCfg> = {
     tglTables: ["data_edc_data1", "data_edc_data2", "data_edc_data3", "data_edc_data4"],
     pnColumn: "pn_user_pemrakarsa",
     valueColumn: "sales_volume",
+    countProduktifTgl1: { nameColumn: "nama_user_pemrakarsa", statusColumn: "status_edc" },
   },
   QRIS: {
     rkaTable: "rka_qris_produktif",
@@ -154,6 +157,35 @@ function parseCache(raw: unknown): Record<string, CacheRow> {
   } catch {
     return {};
   }
+}
+
+/** Normalisasi nama untuk VLOOKUP: buang prefix PN, huruf kecil, spasi tunggal. */
+function nameKey(v: unknown): string {
+  return rmName(String(v ?? "")).replace(/\s+/g, " ").trim();
+}
+
+/** Hitung baris status = "Produktif" per nama user pemrakarsa. */
+async function countProduktifByName(table: string, nameColumn: string, statusColumn: string) {
+  const map = new Map<string, number>();
+  const size = 1000;
+  for (let page = 0; page < 100; page += 1) {
+    const { data, error } = await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .from(table as any)
+      .select(`${nameColumn},${statusColumn}`)
+      .order("id", { ascending: true })
+      .range(page * size, page * size + size - 1);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as unknown as Record<string, unknown>[];
+    for (const r of rows) {
+      if (String(r[statusColumn] ?? "").trim().toLowerCase() !== "produktif") continue;
+      const k = nameKey(r[nameColumn]);
+      if (!k) continue;
+      map.set(k, (map.get(k) ?? 0) + 1);
+    }
+    if (rows.length < size) break;
+  }
+  return map;
 }
 
 export function EdcQrisView({ cfg, title }: { cfg: Record<"EDC" | "QRIS", CatCfg>; title: string }) {
@@ -380,10 +412,14 @@ export function EdcQrisView({ cfg, title }: { cfg: Record<"EDC" | "QRIS", CatCfg
     const idx = src.target === "tgl1" ? 0 : src.target === "tgl2" ? 1 : src.target === "tgl3" ? 2 : 3;
     setBusy(`cmp-${src.kategori}-${src.target}`);
     try {
-      const sums = await sumByPn(cfgRef.tglTables[idx]!, cfgRef.pnColumn, cfgRef.valueColumn);
+      const cnt = idx === 0 ? cfgRef.countProduktifTgl1 : undefined;
+      const byName = cnt
+        ? await countProduktifByName(cfgRef.tglTables[0]!, cnt.nameColumn, cnt.statusColumn)
+        : null;
+      const sums = byName ? null : await sumByPn(cfgRef.tglTables[idx]!, cfgRef.pnColumn, cfgRef.valueColumn);
       const next = rowsRef.current.map((r) => {
         if (r.kategori !== src.kategori) return r;
-        const value = sums.get(pnKey(r.pn)) ?? 0;
+        const value = byName ? (byName.get(nameKey(r.rm)) ?? 0) : (sums?.get(pnKey(r.pn)) ?? 0);
         return { ...r, [src.target]: value };
       });
       rowsRef.current = next;
