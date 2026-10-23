@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Download, Plus, TrendingDown, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { exportTableCsv } from "@/components/DataTableView";
 import { cn } from "@/lib/utils";
+import { useRole } from "@/lib/use-role";
 
 type AvgRow = { id: number; rm: string | null; jg: string | null };
 type ViewRow = {
@@ -32,6 +33,32 @@ type ViewRow = {
 
 const DPK_ORDER = ["Giro", "Tabungan"] as const;
 
+// Hasil hitung (tgl 1-4) dan pilihan RKA disimpan di tabel settings supaya halaman langsung tampil
+// tanpa membaca ribuan baris DI321/DI319 setiap dibuka (sama seperti Produktivitas RMFT).
+const CACHE_KEY = "ui_cache_avg_giro";
+type CacheRow = { tgl1: number; tgl2: number; tgl3: number; tgl4: number; rka: string; rka_bulan: string };
+
+function parseCache(raw: string | null | undefined): Record<string, CacheRow> {
+  if (!raw) return {};
+  try {
+    const o = JSON.parse(raw) as { rows?: Record<string, Partial<CacheRow>> };
+    const out: Record<string, CacheRow> = {};
+    for (const [k, v] of Object.entries(o.rows ?? {})) {
+      out[k] = {
+        tgl1: Number(v?.tgl1) || 0,
+        tgl2: Number(v?.tgl2) || 0,
+        tgl3: Number(v?.tgl3) || 0,
+        tgl4: Number(v?.tgl4) || 0,
+        rka: typeof v?.rka === "string" ? v.rka : "",
+        rka_bulan: typeof v?.rka_bulan === "string" ? v.rka_bulan : "",
+      };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 const MONTHS = [
   { key: "jan", label: "Jan" },
   { key: "feb", label: "Feb" },
@@ -47,14 +74,6 @@ const MONTHS = [
   { key: "des", label: "Des" },
 ] as const;
 
-// Sumber TGL1-4 (DI319) — sama seperti Produktivitas RMFT.
-const TGLS = [
-  { key: "tgl1", table: "data_di319_data1", pnColumn: "pn_rm_dana_mantri", valueColumn: "balance" },
-  { key: "tgl2", table: "data_di319_data2", pnColumn: "pn_rm_dana_mantri", valueColumn: "balance" },
-  { key: "tgl3", table: "data_di319_data3", pnColumn: "pn_rm_dana_mantri", valueColumn: "balance" },
-  { key: "tgl4", table: "data_di319_data4", pnColumn: "pn_rm_dana_mantri", valueColumn: "balance" },
-] as const;
-
 function num(value: unknown) {
   if (value === null || value === undefined || value === "") return 0;
   const n = Number(String(value).replace(/[^0-9.-]/g, ""));
@@ -63,6 +82,11 @@ function num(value: unknown) {
 
 function fmt(n: number) {
   return n.toLocaleString("id-ID");
+}
+
+/** Normalisasi PN: hapus leading zero. "00135655" dan "135655" dianggap PN yang sama. */
+function pnKey(v: string): string {
+  return v.trim().replace(/^0+/, "");
 }
 
 function rmName(rm: string | null): string {
@@ -83,12 +107,14 @@ async function sumByPn(table: string, pnColumn: string, valueColumn: string) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .from(table as any)
       .select(`${pnColumn},${valueColumn}`)
+      // Wajib berurutan: tanpa ORDER BY, halaman 1000-baris bisa saling tumpang tindih / terlewat.
+      .order("id", { ascending: true })
       .range(page * size, page * size + size - 1);
     if (error) throw new Error(error.message);
     const rows = (data ?? []) as unknown as Record<string, unknown>[];
     for (const r of rows) {
       const raw = String(r[pnColumn] ?? "").trim();
-      const pn = raw.split("-")[0]!.trim();
+      const pn = pnKey(raw.split("-")[0]!.trim());
       if (!pn) continue;
       map.set(pn, (map.get(pn) ?? 0) + num(r[valueColumn]));
     }
@@ -97,9 +123,23 @@ async function sumByPn(table: string, pnColumn: string, valueColumn: string) {
   return map;
 }
 
+// Sumber rincian untuk "Export Rincian": semua baris yang ikut dijumlahkan di tabel.
+const DETAIL_SRC = [
+  { label: "GIRO YTD", table: "data_di321_data1", pn: "pn_rm_dana", val: "avrg_balance", curr: "curr" },
+  { label: "GIRO MTD", table: "data_di321_data2", pn: "pn_rm_dana", val: "avrg_balance", curr: "curr" },
+  { label: "GIRO DTD", table: "data_di321_data3", pn: "pn_rm_dana", val: "avrg_balance", curr: "curr" },
+  { label: "GIRO KEMARIN", table: "data_di321_data4", pn: "pn_rm_dana", val: "avrg_balance", curr: "curr" },
+  { label: "TAB YTD", table: "data_di319_data1", pn: "pn_rm_dana_mantri", val: "average_balance", curr: "curr_code" },
+  { label: "TAB MTD", table: "data_di319_data2", pn: "pn_rm_dana_mantri", val: "average_balance", curr: "curr_code" },
+  { label: "TAB DTD", table: "data_di319_data3", pn: "pn_rm_dana_mantri", val: "average_balance", curr: "curr_code" },
+  { label: "TAB KEMARIN", table: "data_di319_data4", pn: "pn_rm_dana_mantri", val: "average_balance", curr: "curr_code" },
+] as const;
+
 export function AverageGiroView() {
+  const { isAdmin: canEdit } = useRole();
   const [loading, setLoading] = useState(true);
   const [viewRows, setViewRows] = useState<ViewRow[]>([]);
+  const rowsRef = useRef<ViewRow[]>([]);
   const [nameToPn, setNameToPn] = useState<Map<string, string>>(new Map());
   const [pnToName, setPnToName] = useState<Map<string, string>>(new Map());
   const [busy, setBusy] = useState<string | null>(null);
@@ -160,11 +200,13 @@ export function AverageGiroView() {
       setNameToPn(nm);
       setPnToName(pnMap);
 
-      // 3. Hitung TGL1-4 dari DI319 per PN
-      const tglMaps = await Promise.all(
-        TGLS.map(async (t) => [t.key, await sumByPn(t.table, t.pnColumn, t.valueColumn)] as const),
-      );
-      const tglByKey = new Map(tglMaps);
+      // 3. Hasil hitung terakhir yang tersimpan (tidak menghitung ulang dari DI321/DI319)
+      const { data: cacheRow } = await supabase
+        .from("settings")
+        .select("value")
+        .eq("key", CACHE_KEY)
+        .maybeSingle();
+      const cache = parseCache(cacheRow?.value);
 
       // 4. Bangun 3 baris DPK per RM
       const built: ViewRow[] = [];
@@ -172,22 +214,22 @@ export function AverageGiroView() {
         const name = rmName(a.rm);
         const pn = nm.get(name) ?? "";
         for (const dpk of DPK_ORDER) {
-          const g = (k: (typeof TGLS)[number]["key"]) =>
-            (tglByKey.get(k) as Map<string, number> | undefined)?.get(pn) ?? 0;
+          const c = cache[`${a.id}-${dpk}`];
           built.push({
             key: `${a.id}-${dpk}`,
             rm: pnMap.get(pn) ?? a.rm ?? name,
             pn,
             dpk,
-            tgl1: g("tgl1"),
-            tgl2: g("tgl2"),
-            tgl3: g("tgl3"),
-            tgl4: g("tgl4"),
-            rka: "",
-            rka_bulan: "",
+            tgl1: c?.tgl1 ?? 0,
+            tgl2: c?.tgl2 ?? 0,
+            tgl3: c?.tgl3 ?? 0,
+            tgl4: c?.tgl4 ?? 0,
+            rka: c?.rka ?? "",
+            rka_bulan: c?.rka_bulan ?? "",
           });
         }
       }
+      rowsRef.current = built;
       setViewRows(built);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal memuat data.");
@@ -199,6 +241,29 @@ export function AverageGiroView() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** Simpan hasil hitung & pilihan RKA ke tabel settings (hanya admin). */
+  async function persist(rows: ViewRow[]) {
+    if (!canEdit) return;
+    const cache: Record<string, CacheRow> = {};
+    for (const r of rows) {
+      cache[r.key] = {
+        tgl1: r.tgl1,
+        tgl2: r.tgl2,
+        tgl3: r.tgl3,
+        tgl4: r.tgl4,
+        rka: r.rka,
+        rka_bulan: r.rka_bulan,
+      };
+    }
+    const { error } = await supabase
+      .from("settings")
+      .upsert(
+        { key: CACHE_KEY, value: JSON.stringify({ v: 1, rows: cache }), updated_at: new Date().toISOString() },
+        { onConflict: "key" },
+      );
+    if (error) toast.error(`Gagal menyimpan hasil: ${error.message}`);
+  }
 
   /** Tambah RM baru ke rka_avg_giro. */
   async function addRm() {
@@ -265,13 +330,14 @@ export function AverageGiroView() {
     setBusy(`cmp-${src.target}-${src.dpk}`);
     try {
       const sums = await sumByPn(src.table, src.pnColumn, src.valueColumn);
-      setViewRows((prev) =>
-        prev.map((r) => {
-          if (r.dpk !== src.dpk) return r;
-          const value = sums.get(r.pn) ?? 0;
-          return { ...r, [src.target]: value };
-        }),
-      );
+      const next = rowsRef.current.map((r) => {
+        if (r.dpk !== src.dpk) return r;
+        const value = sums.get(pnKey(r.pn)) ?? 0;
+        return { ...r, [src.target]: value };
+      });
+      rowsRef.current = next;
+      setViewRows(next);
+      await persist(next);
       toast.success(`${src.dpk} ${src.target.toUpperCase()} selesai.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal memproses data.");
@@ -296,9 +362,12 @@ export function AverageGiroView() {
         toast.error(`Nilai Average ${monthKey.toUpperCase()} tidak ditemukan.`);
         return;
       }
-      setViewRows((prev) =>
-        prev.map((r) => (r.key === row.key ? { ...r, rka: String(value), rka_bulan: monthKey } : r)),
+      const next = rowsRef.current.map((r) =>
+        r.key === row.key ? { ...r, rka: String(value), rka_bulan: monthKey } : r,
       );
+      rowsRef.current = next;
+      setViewRows(next);
+      await persist(next);
       toast.success(`Average ${monthKey.toUpperCase()} dimuat.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal memuat Average.");
@@ -341,6 +410,76 @@ export function AverageGiroView() {
     );
   }
 
+  /** Unduh semua baris sumber (DI321 / DI319 DATA1-4) milik RM di tabel ini + ringkasan per PN. */
+  async function exportRincian() {
+    setBusy("rincian");
+    try {
+      const pnSet = new Set(viewRows.map((r) => pnKey(r.pn)).filter(Boolean));
+      const nameByPn = new Map<string, string>();
+      for (const [k, v] of pnToName) nameByPn.set(pnKey(k), v);
+      const detail: Record<string, unknown>[] = [];
+      const sums = new Map<string, Record<string, unknown>>();
+      for (const s of DETAIL_SRC) {
+        for (let page = 0; page < 100; page += 1) {
+          const { data, error } = await supabase
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .from(s.table as any)
+            .select(`id,periode,account_number,short_name,${s.curr},${s.pn},${s.val}`)
+            .order("id", { ascending: true })
+            .range(page * 1000, page * 1000 + 999);
+          if (error) throw new Error(`${s.label}: ${error.message}`);
+          const rows = (data ?? []) as unknown as Record<string, unknown>[];
+          for (const r of rows) {
+            const pnRaw = String(r[s.pn] ?? "").trim();
+            const pn = pnKey(pnRaw.split("-")[0]!.trim());
+            if (!pn || !pnSet.has(pn)) continue;
+            const nilai = num(r[s.val]);
+            detail.push({
+              Sumber: s.label,
+              Periode: r["periode"] ?? "",
+              PN: pn,
+              "Nama RM": nameByPn.get(pn) ?? "",
+              "PN (isi asli)": pnRaw,
+              "Account Number": r["account_number"] ?? "",
+              "Short Name": r["short_name"] ?? "",
+              Curr: r[s.curr] ?? "",
+              "Nilai (teks asli)": r[s.val] ?? "",
+              "Nilai (dihitung)": nilai,
+              "Baris ke (id)": r["id"] ?? "",
+            });
+            const k = `${s.label}|${pn}`;
+            const cur = sums.get(k) ?? {
+              Sumber: s.label,
+              Periode: r["periode"] ?? "",
+              PN: pn,
+              "Nama RM": nameByPn.get(pn) ?? "",
+              "Jumlah Baris": 0,
+              "Total (dihitung)": 0,
+            };
+            cur["Jumlah Baris"] = Number(cur["Jumlah Baris"]) + 1;
+            cur["Total (dihitung)"] = Number(cur["Total (dihitung)"]) + nilai;
+            sums.set(k, cur);
+          }
+          if (rows.length < 1000) break;
+        }
+      }
+      if (!detail.length) {
+        toast.error("Tidak ada baris yang cocok dengan RM di tabel.");
+        return;
+      }
+      const XLSX = await import("xlsx");
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([...sums.values()]), "Ringkasan");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), "Rincian");
+      XLSX.writeFile(wb, "average_giro_rincian.xlsx");
+      toast.success(`${detail.length.toLocaleString("id-ID")} baris rincian diunduh.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal mengunduh rincian.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const deltaCell = (value: number) => (
     <td
       className={cn(
@@ -359,20 +498,29 @@ export function AverageGiroView() {
     <div className="mt-10 space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="mr-2 text-lg font-bold tracking-tight">AVERAGE GIRO DAN TABUNGAN</h2>
-        <Button className="bg-action-1 text-action-foreground hover:opacity-90" onClick={() => setAddOpen(true)}>
-          <Plus className="mr-1.5 size-4" /> Tambah RM
-        </Button>
-        <Button className="bg-action-2 text-action-foreground hover:opacity-90" onClick={() => runCompare({ table: "data_di321_data1", pnColumn: "pn_rm_dana", valueColumn: "avrg_balance", target: "tgl1", dpk: "Giro" })}>GIRO YTD</Button>
-        <Button className="bg-action-3 text-action-foreground hover:opacity-90" onClick={() => runCompare({ table: "data_di321_data2", pnColumn: "pn_rm_dana", valueColumn: "avrg_balance", target: "tgl2", dpk: "Giro" })}>GIRO MTD</Button>
-        <Button className="bg-action-4 text-action-foreground hover:opacity-90" onClick={() => runCompare({ table: "data_di321_data3", pnColumn: "pn_rm_dana", valueColumn: "avrg_balance", target: "tgl3", dpk: "Giro" })}>GIRO DTD</Button>
-        <Button className="bg-action-5 text-action-foreground hover:opacity-90" onClick={() => runCompare({ table: "data_di319_data1", pnColumn: "pn_rm_dana_mantri", valueColumn: "average_balance", target: "tgl1", dpk: "Tabungan" })}>TAB YTD</Button>
-        <Button className="bg-action-6 text-action-foreground hover:opacity-90" onClick={() => runCompare({ table: "data_di319_data2", pnColumn: "pn_rm_dana_mantri", valueColumn: "average_balance", target: "tgl2", dpk: "Tabungan" })}>TAB MTD</Button>
-        <Button className="bg-action-7 text-action-foreground hover:opacity-90" onClick={() => runCompare({ table: "data_di319_data3", pnColumn: "pn_rm_dana_mantri", valueColumn: "average_balance", target: "tgl3", dpk: "Tabungan" })}>TAB DTD</Button>
-        <Button className="bg-action-2 text-action-foreground hover:opacity-90" onClick={() => runCompare({ table: "data_di321_data4", pnColumn: "pn_rm_dana", valueColumn: "avrg_balance", target: "tgl4", dpk: "Giro" })}>GIRO KEMARIN</Button>
-        <Button className="bg-action-5 text-action-foreground hover:opacity-90" onClick={() => runCompare({ table: "data_di319_data4", pnColumn: "pn_rm_dana_mantri", valueColumn: "average_balance", target: "tgl4", dpk: "Tabungan" })}>TAB KEMARIN</Button>
+        {canEdit && (
+          <>
+          <Button className="bg-action-1 text-action-foreground hover:opacity-90" onClick={() => setAddOpen(true)}>
+            <Plus className="mr-1.5 size-4" /> Tambah RM
+          </Button>
+          <Button className="bg-action-2 text-action-foreground hover:opacity-90" onClick={() => runCompare({ table: "data_di321_data1", pnColumn: "pn_rm_dana", valueColumn: "avrg_balance", target: "tgl1", dpk: "Giro" })}>GIRO YTD</Button>
+          <Button className="bg-action-3 text-action-foreground hover:opacity-90" onClick={() => runCompare({ table: "data_di321_data2", pnColumn: "pn_rm_dana", valueColumn: "avrg_balance", target: "tgl2", dpk: "Giro" })}>GIRO MTD</Button>
+          <Button className="bg-action-4 text-action-foreground hover:opacity-90" onClick={() => runCompare({ table: "data_di321_data3", pnColumn: "pn_rm_dana", valueColumn: "avrg_balance", target: "tgl3", dpk: "Giro" })}>GIRO DTD</Button>
+          <Button className="bg-action-5 text-action-foreground hover:opacity-90" onClick={() => runCompare({ table: "data_di319_data1", pnColumn: "pn_rm_dana_mantri", valueColumn: "average_balance", target: "tgl1", dpk: "Tabungan" })}>TAB YTD</Button>
+          <Button className="bg-action-6 text-action-foreground hover:opacity-90" onClick={() => runCompare({ table: "data_di319_data2", pnColumn: "pn_rm_dana_mantri", valueColumn: "average_balance", target: "tgl2", dpk: "Tabungan" })}>TAB MTD</Button>
+          <Button className="bg-action-7 text-action-foreground hover:opacity-90" onClick={() => runCompare({ table: "data_di319_data3", pnColumn: "pn_rm_dana_mantri", valueColumn: "average_balance", target: "tgl3", dpk: "Tabungan" })}>TAB DTD</Button>
+          <Button className="bg-action-2 text-action-foreground hover:opacity-90" onClick={() => runCompare({ table: "data_di321_data4", pnColumn: "pn_rm_dana", valueColumn: "avrg_balance", target: "tgl4", dpk: "Giro" })}>GIRO KEMARIN</Button>
+          <Button className="bg-action-5 text-action-foreground hover:opacity-90" onClick={() => runCompare({ table: "data_di319_data4", pnColumn: "pn_rm_dana_mantri", valueColumn: "average_balance", target: "tgl4", dpk: "Tabungan" })}>TAB KEMARIN</Button>
+          </>
+        )}
         <Button variant="secondary" onClick={exportExcel}>
           <Download className="mr-1.5 size-4" /> Export Excel
         </Button>
+        {canEdit && (
+          <Button variant="secondary" onClick={exportRincian} disabled={busy === "rincian"}>
+            <Download className="mr-1.5 size-4" /> {busy === "rincian" ? "Mengunduh…" : "Export Rincian"}
+          </Button>
+        )}
       </div>
 
       {loading ? (
@@ -392,7 +540,7 @@ export function AverageGiroView() {
               <tr className="bg-table-head text-table-head-foreground">
                 <th className="px-4 py-3 text-left font-semibold">RM</th>
                 <th className="px-4 py-3 text-left font-semibold">DPK</th>
-                <th className="px-4 py-3 text-left font-semibold">RKA</th>
+                {canEdit && <th className="px-4 py-3 text-left font-semibold">RKA</th>}
                 <th className="px-4 py-3 text-right font-semibold">Nilai RKA</th>
                 <th className="px-4 py-3 text-right font-semibold">{periods.tgl1 || "tgl 1"}</th>
                 <th className="px-4 py-3 text-right font-semibold">{periods.tgl2 || "tgl 2"}</th>
@@ -426,23 +574,25 @@ export function AverageGiroView() {
                         </td>
                       )}
                       <td className="whitespace-nowrap px-4 py-2.5">{r.dpk}</td>
-                      <td className="whitespace-nowrap px-4 py-2.5">
-                        <select
-                          value={r.rka_bulan}
-                          disabled={busy === r.key}
-                          onChange={(e) => {
-                            if (e.target.value) void selectRkaMonth(r, e.target.value);
-                          }}
-                          className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground"
-                        >
-                          <option value="">Pilih bulan…</option>
-                          {MONTHS.map((m) => (
-                            <option key={m.key} value={m.key}>
-                              {m.label}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
+                      {canEdit && (
+                        <td className="whitespace-nowrap px-4 py-2.5">
+                          <select
+                            value={r.rka_bulan}
+                            disabled={busy === r.key}
+                            onChange={(e) => {
+                              if (e.target.value) void selectRkaMonth(r, e.target.value);
+                            }}
+                            className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+                          >
+                            <option value="">Pilih bulan…</option>
+                            {MONTHS.map((m) => (
+                              <option key={m.key} value={m.key}>
+                                {m.label}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      )}
                       <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums">
                         {r.rka ? (
                           <span className="inline-flex items-center gap-1.5">
@@ -467,20 +617,22 @@ export function AverageGiroView() {
                       {deltaCell(r.tgl3 - num(r.rka))}
                       {i === 0 && (
                         <td rowSpan={g.items.length + 1} className="px-4 py-2.5 text-right align-top">
-                          <button
-                            type="button"
-                            className="text-sm text-destructive hover:underline"
-                            onClick={() => deleteRm(g.rm)}
-                          >
-                            Hapus
-                          </button>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              className="text-sm text-destructive hover:underline"
+                              onClick={() => deleteRm(g.rm)}
+                            >
+                              Hapus
+                            </button>
+                          )}
                         </td>
                       )}
                     </tr>
                   ))}
                   <tr className="border-t bg-muted/50 font-semibold">
                     <td className="px-4 py-2.5">Jumlah</td>
-                    <td className="px-4 py-2.5" />
+                    {canEdit && <td className="px-4 py-2.5" />}
                     <td className="px-4 py-2.5" />
                     <td className="px-4 py-2.5 text-right tabular-nums">{fmt(total.tgl1)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{fmt(total.tgl2)}</td>

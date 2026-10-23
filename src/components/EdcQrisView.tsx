@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Download, Plus, TrendingDown, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { exportTableCsv } from "@/components/DataTableView";
 import { cn } from "@/lib/utils";
+import { useRole } from "@/lib/use-role";
 
 type ViewRow = {
   key: string;
@@ -117,6 +118,8 @@ async function sumByPn(table: string, pnColumn: string, valueColumn: string) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .from(table as any)
       .select(`${pnColumn},${valueColumn}`)
+      // Wajib berurutan: tanpa ORDER BY, halaman 1000-baris bisa saling tumpang tindih / terlewat.
+      .order("id", { ascending: true })
       .range(page * size, page * size + size - 1);
     if (error) throw new Error(error.message);
     const rows = (data ?? []) as unknown as Record<string, unknown>[];
@@ -130,7 +133,22 @@ async function sumByPn(table: string, pnColumn: string, valueColumn: string) {
   return map;
 }
 
+type CacheRow = { tgl1?: number; tgl2?: number; tgl3?: number; tgl4?: number; rka?: string; rka_bulan?: string };
+
+function parseCache(raw: unknown): Record<string, CacheRow> {
+  try {
+    const d = JSON.parse(String(raw ?? ""));
+    const rows = d?.rows;
+    return rows && typeof rows === "object" ? (rows as Record<string, CacheRow>) : {};
+  } catch {
+    return {};
+  }
+}
+
 export function EdcQrisView({ cfg, title }: { cfg: Record<"EDC" | "QRIS", CatCfg>; title: string }) {
+  const { isAdmin: canEdit } = useRole();
+  const cacheKey = `ui_cache_${cfg.EDC.rkaTable}`;
+  const rowsRef = useRef<ViewRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewRows, setViewRows] = useState<ViewRow[]>([]);
   const [nameToPn, setNameToPn] = useState<Map<string, string>>(new Map());
@@ -183,13 +201,13 @@ export function EdcQrisView({ cfg, title }: { cfg: Record<"EDC" | "QRIS", CatCfg
       ]);
       setPeriods({ tgl1: p1, tgl2: p2, tgl3: p3, tgl4: p4 });
 
-      // TGL1-4 untuk EDC & QRIS
-      const edcTgls = await Promise.all(
-        cfg.EDC.tglTables.map((t) => sumByPn(t, cfg.EDC.pnColumn, cfg.EDC.valueColumn)),
-      );
-      const qrisTgls = await Promise.all(
-        cfg.QRIS.tglTables.map((t) => sumByPn(t, cfg.QRIS.pnColumn, cfg.QRIS.valueColumn)),
-      );
+      // Hasil hitungan tersimpan (diisi admin lewat tombol) -> tampil instan
+      const { data: cacheRow } = await supabase
+        .from("settings")
+        .select("value")
+        .eq("key", cacheKey)
+        .maybeSingle();
+      const cache = parseCache((cacheRow as { value?: string } | null)?.value);
 
       // RM dari rka_edc_produktif & rka_qris_produktif
       const { data: edcRka } = await supabase
@@ -204,39 +222,56 @@ export function EdcQrisView({ cfg, title }: { cfg: Record<"EDC" | "QRIS", CatCfg
         .order("id");
 
       const built: ViewRow[] = [];
-      const addRows = (rkaRows: unknown, kategori: string, tgls: Map<string, number>[]) => {
+      const addRows = (rkaRows: unknown, kategori: string) => {
         for (const a of (rkaRows as { id: number; rm: string | null }[] | null) ?? []) {
           const name = rmName(a.rm);
           const pn = nm.get(name) ?? "";
-          const pnK = pnKey(pn);
+          const c = cache[`${kategori}-${a.id}`] ?? {};
           built.push({
             key: `${kategori}-${a.id}`,
             rm: pnMap.get(pn) ?? a.rm ?? name,
             pn,
             kategori,
-            tgl1: tgls[0]!.get(pnK) ?? 0,
-            tgl2: tgls[1]!.get(pnK) ?? 0,
-            tgl3: tgls[2]!.get(pnK) ?? 0,
-            tgl4: tgls[3]!.get(pnK) ?? 0,
-            rka: "",
-            rka_bulan: "",
+            tgl1: num(c.tgl1),
+            tgl2: num(c.tgl2),
+            tgl3: num(c.tgl3),
+            tgl4: num(c.tgl4),
+            rka: c.rka ?? "",
+            rka_bulan: c.rka_bulan ?? "",
           });
         }
       };
-      addRows(edcRka as unknown, "EDC", edcTgls);
-      addRows(qrisRka as unknown, "QRIS", qrisTgls);
+      addRows(edcRka as unknown, "EDC");
+      addRows(qrisRka as unknown, "QRIS");
 
+      rowsRef.current = built;
       setViewRows(built);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal memuat data.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [cacheKey]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** Simpan hasil hitungan ke settings (admin) supaya tampil instan saat dibuka. */
+  async function persist(rows: ViewRow[]) {
+    if (!canEdit) return;
+    const out: Record<string, CacheRow> = {};
+    for (const r of rows) {
+      out[r.key] = { tgl1: r.tgl1, tgl2: r.tgl2, tgl3: r.tgl3, tgl4: r.tgl4, rka: r.rka, rka_bulan: r.rka_bulan };
+    }
+    const { error } = await supabase
+      .from("settings")
+      .upsert(
+        { key: cacheKey, value: JSON.stringify({ v: 1, rows: out }), updated_at: new Date().toISOString() },
+        { onConflict: "key" },
+      );
+    if (error) toast.error(`Gagal menyimpan hasil: ${error.message}`);
+  }
 
   /** Tambah RM baru ke rka_edc_produktif & rka_qris_produktif. */
   async function addRm() {
@@ -313,9 +348,12 @@ export function EdcQrisView({ cfg, title }: { cfg: Record<"EDC" | "QRIS", CatCfg
         toast.error(`Nilai ${monthKey.toUpperCase()} tidak ditemukan.`);
         return;
       }
-      setViewRows((prev) =>
-        prev.map((r) => (r.key === row.key ? { ...r, rka: String(value), rka_bulan: monthKey } : r)),
+      const next = rowsRef.current.map((r) =>
+        r.key === row.key ? { ...r, rka: String(value), rka_bulan: monthKey } : r,
       );
+      rowsRef.current = next;
+      setViewRows(next);
+      await persist(next);
       toast.success(`${row.kategori} ${monthKey.toUpperCase()} dimuat.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal memuat RKA.");
@@ -331,13 +369,14 @@ export function EdcQrisView({ cfg, title }: { cfg: Record<"EDC" | "QRIS", CatCfg
     setBusy(`cmp-${src.kategori}-${src.target}`);
     try {
       const sums = await sumByPn(cfgRef.tglTables[idx]!, cfgRef.pnColumn, cfgRef.valueColumn);
-      setViewRows((prev) =>
-        prev.map((r) => {
-          if (r.kategori !== src.kategori) return r;
-          const value = sums.get(pnKey(r.pn)) ?? 0;
-          return { ...r, [src.target]: value };
-        }),
-      );
+      const next = rowsRef.current.map((r) => {
+        if (r.kategori !== src.kategori) return r;
+        const value = sums.get(pnKey(r.pn)) ?? 0;
+        return { ...r, [src.target]: value };
+      });
+      rowsRef.current = next;
+      setViewRows(next);
+      await persist(next);
       toast.success(`${src.kategori} ${src.target.toUpperCase()} selesai.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal memproses data.");
@@ -397,17 +436,21 @@ export function EdcQrisView({ cfg, title }: { cfg: Record<"EDC" | "QRIS", CatCfg
     <div className="mt-10 space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="mr-2 text-lg font-bold tracking-tight">{title}</h2>
-        <Button className="bg-action-1 text-action-foreground hover:opacity-90" onClick={() => setAddOpen(true)}>
-          <Plus className="mr-1.5 size-4" /> Tambah RM
-        </Button>
-        <Button className="bg-action-2 text-action-foreground hover:opacity-90" onClick={() => runCompare({ kategori: "EDC", target: "tgl1" })}>EDC YTD</Button>
-        <Button className="bg-action-3 text-action-foreground hover:opacity-90" onClick={() => runCompare({ kategori: "EDC", target: "tgl2" })}>EDC MTD</Button>
-        <Button className="bg-action-4 text-action-foreground hover:opacity-90" onClick={() => runCompare({ kategori: "EDC", target: "tgl3" })}>EDC DTD</Button>
-        <Button className="bg-action-5 text-action-foreground hover:opacity-90" onClick={() => runCompare({ kategori: "QRIS", target: "tgl1" })}>QRIS YTD</Button>
-        <Button className="bg-action-6 text-action-foreground hover:opacity-90" onClick={() => runCompare({ kategori: "QRIS", target: "tgl2" })}>QRIS MTD</Button>
-        <Button className="bg-action-7 text-action-foreground hover:opacity-90" onClick={() => runCompare({ kategori: "QRIS", target: "tgl3" })}>QRIS DTD</Button>
-        <Button className="bg-action-2 text-action-foreground hover:opacity-90" onClick={() => runCompare({ kategori: "EDC", target: "tgl4" })}>EDC KEMARIN</Button>
-        <Button className="bg-action-5 text-action-foreground hover:opacity-90" onClick={() => runCompare({ kategori: "QRIS", target: "tgl4" })}>QRIS KEMARIN</Button>
+        {canEdit && (
+          <>
+          <Button className="bg-action-1 text-action-foreground hover:opacity-90" onClick={() => setAddOpen(true)}>
+            <Plus className="mr-1.5 size-4" /> Tambah RM
+          </Button>
+          <Button className="bg-action-2 text-action-foreground hover:opacity-90" onClick={() => runCompare({ kategori: "EDC", target: "tgl1" })}>EDC YTD</Button>
+          <Button className="bg-action-3 text-action-foreground hover:opacity-90" onClick={() => runCompare({ kategori: "EDC", target: "tgl2" })}>EDC MTD</Button>
+          <Button className="bg-action-4 text-action-foreground hover:opacity-90" onClick={() => runCompare({ kategori: "EDC", target: "tgl3" })}>EDC DTD</Button>
+          <Button className="bg-action-5 text-action-foreground hover:opacity-90" onClick={() => runCompare({ kategori: "QRIS", target: "tgl1" })}>QRIS YTD</Button>
+          <Button className="bg-action-6 text-action-foreground hover:opacity-90" onClick={() => runCompare({ kategori: "QRIS", target: "tgl2" })}>QRIS MTD</Button>
+          <Button className="bg-action-7 text-action-foreground hover:opacity-90" onClick={() => runCompare({ kategori: "QRIS", target: "tgl3" })}>QRIS DTD</Button>
+          <Button className="bg-action-2 text-action-foreground hover:opacity-90" onClick={() => runCompare({ kategori: "EDC", target: "tgl4" })}>EDC KEMARIN</Button>
+          <Button className="bg-action-5 text-action-foreground hover:opacity-90" onClick={() => runCompare({ kategori: "QRIS", target: "tgl4" })}>QRIS KEMARIN</Button>
+          </>
+        )}
         <Button variant="secondary" onClick={exportExcel}>
           <Download className="mr-1.5 size-4" /> Export Excel
         </Button>
@@ -428,7 +471,7 @@ export function EdcQrisView({ cfg, title }: { cfg: Record<"EDC" | "QRIS", CatCfg
               <tr className="bg-table-head text-table-head-foreground">
                 <th className="px-4 py-3 text-left font-semibold">RM</th>
                 <th className="px-4 py-3 text-left font-semibold">Kategori</th>
-                <th className="px-4 py-3 text-left font-semibold">RKA</th>
+                {canEdit && <th className="px-4 py-3 text-left font-semibold">RKA</th>}
                 <th className="px-4 py-3 text-right font-semibold">Nilai RKA</th>
                 <th className="px-4 py-3 text-right font-semibold">{periods.tgl1 || "tgl 1"}</th>
                 <th className="px-4 py-3 text-right font-semibold">{periods.tgl2 || "tgl 2"}</th>
@@ -462,23 +505,25 @@ export function EdcQrisView({ cfg, title }: { cfg: Record<"EDC" | "QRIS", CatCfg
                         </td>
                       )}
                       <td className="whitespace-nowrap px-4 py-2.5">{r.kategori}</td>
-                      <td className="whitespace-nowrap px-4 py-2.5">
-                        <select
-                          value={r.rka_bulan}
-                          disabled={busy === r.key}
-                          onChange={(e) => {
-                            if (e.target.value) void selectRkaMonth(r, e.target.value);
-                          }}
-                          className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground"
-                        >
-                          <option value="">Pilih bulan…</option>
-                          {MONTHS.map((m) => (
-                            <option key={m.key} value={m.key}>
-                              {m.label}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
+                      {canEdit && (
+                        <td className="whitespace-nowrap px-4 py-2.5">
+                          <select
+                            value={r.rka_bulan}
+                            disabled={busy === r.key}
+                            onChange={(e) => {
+                              if (e.target.value) void selectRkaMonth(r, e.target.value);
+                            }}
+                            className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+                          >
+                            <option value="">Pilih bulan…</option>
+                            {MONTHS.map((m) => (
+                              <option key={m.key} value={m.key}>
+                                {m.label}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      )}
                       <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums">
                         {r.rka ? (
                           <span className="inline-flex items-center gap-1.5">
@@ -503,20 +548,22 @@ export function EdcQrisView({ cfg, title }: { cfg: Record<"EDC" | "QRIS", CatCfg
                       {deltaCell(r.tgl3 - num(r.rka))}
                       {i === 0 && (
                         <td rowSpan={g.items.length + 1} className="px-4 py-2.5 text-right align-top">
-                          <button
-                            type="button"
-                            className="text-sm text-destructive hover:underline"
-                            onClick={() => deleteRm(g.rm)}
-                          >
-                            Hapus
-                          </button>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              className="text-sm text-destructive hover:underline"
+                              onClick={() => deleteRm(g.rm)}
+                            >
+                              Hapus
+                            </button>
+                          )}
                         </td>
                       )}
                     </tr>
                   ))}
                   <tr className="border-t bg-muted/50 font-semibold">
                     <td className="px-4 py-2.5">Jumlah</td>
-                    <td className="px-4 py-2.5" />
+                    {canEdit && <td className="px-4 py-2.5" />}
                     <td className="px-4 py-2.5" />
                     <td className="px-4 py-2.5 text-right tabular-nums">{fmt(total.tgl1)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{fmt(total.tgl2)}</td>
