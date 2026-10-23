@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { exportTableCsv } from "@/components/DataTableView";
 import { cn } from "@/lib/utils";
+import { formatPosisi } from "@/lib/edc-produktif";
 import { useRole } from "@/lib/use-role";
 
 type ViewRow = {
@@ -105,6 +106,16 @@ function rmName(rm: string | null): string {
   return (s.includes(" - ") ? s.split(" - ").slice(1).join(" - ") : s).trim().toLowerCase();
 }
 
+/** "2026/8/31 0:00" -> "31 Agu 2026" (dari kolom posisi). */
+function shortDate(raw: string): string {
+  const f = formatPosisi(raw);
+  if (!f) return "";
+  const m = f.match(/^(\d{1,2}) ([A-Z]+) (\d{4})$/);
+  if (!m) return f;
+  const mon = m[2]!.slice(0, 3);
+  return `${m[1]} ${mon[0]}${mon.slice(1).toLowerCase()} ${m[3]}`;
+}
+
 function monthLabel(key: string | null): string {
   const found = MONTHS.find((m) => m.key === key);
   return found?.label ?? "";
@@ -182,24 +193,25 @@ export function EdcQrisView({ cfg, title }: { cfg: Record<"EDC" | "QRIS", CatCfg
       setNameToPn(nm);
       setPnToName(pnMap);
 
-      // Periode header dari data3 (DTD)
-      const fetchPeriode = async (table: string): Promise<string> => {
+      // Tanggal header diambil dari kolom posisi data YTD / MTD / DTD / Kemarin (EDC, cadangan QRIS)
+      const fetchPosisi = async (table: string): Promise<string> => {
         const { data, error } = await supabase
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .from(table as any)
-          .select("periode")
+          .select("posisi")
+          .order("id", { ascending: true })
           .limit(1);
         if (error) return "";
         const rows = (data ?? []) as unknown as Record<string, unknown>[];
-        return String(rows[0]?.["periode"] ?? "");
+        return shortDate(String(rows[0]?.["posisi"] ?? ""));
       };
-      const [p1, p2, p3, p4] = await Promise.all([
-        fetchPeriode("data_edc_data1"),
-        fetchPeriode("data_edc_data2"),
-        fetchPeriode("data_edc_data3"),
-        fetchPeriode("data_edc_data4"),
-      ]);
-      setPeriods({ tgl1: p1, tgl2: p2, tgl3: p3, tgl4: p4 });
+      const pos = await Promise.all(
+        [0, 1, 2, 3].map(async (i) => {
+          const e = await fetchPosisi(cfg.EDC.tglTables[i]!);
+          return e || (await fetchPosisi(cfg.QRIS.tglTables[i]!));
+        }),
+      );
+      setPeriods({ tgl1: pos[0]!, tgl2: pos[1]!, tgl3: pos[2]!, tgl4: pos[3]! });
 
       // Hasil hitungan tersimpan (diisi admin lewat tombol) -> tampil instan
       const { data: cacheRow } = await supabase
@@ -473,10 +485,10 @@ export function EdcQrisView({ cfg, title }: { cfg: Record<"EDC" | "QRIS", CatCfg
                 <th className="px-4 py-3 text-left font-semibold">Kategori</th>
                 {canEdit && <th className="px-4 py-3 text-left font-semibold">RKA</th>}
                 <th className="px-4 py-3 text-right font-semibold">Nilai RKA</th>
-                <th className="px-4 py-3 text-right font-semibold">{periods.tgl1 || "tgl 1"}</th>
-                <th className="px-4 py-3 text-right font-semibold">{periods.tgl2 || "tgl 2"}</th>
-                <th className="px-4 py-3 text-right font-semibold">{periods.tgl3 || "tgl 3"}</th>
-                <th className="px-4 py-3 text-right font-semibold">{periods.tgl4 || "tgl 4"}</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right font-semibold">{periods.tgl1 || "tgl 1"}</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right font-semibold">{periods.tgl2 || "tgl 2"}</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right font-semibold">{periods.tgl3 || "tgl 3"}</th>
+                <th className="whitespace-nowrap px-4 py-3 text-right font-semibold">{periods.tgl4 || "tgl 4"}</th>
                 <th className="bg-table-accent px-4 py-3 text-right font-semibold">DTD</th>
                 <th className="bg-table-accent px-4 py-3 text-right font-semibold">MTD</th>
                 <th className="bg-table-accent px-4 py-3 text-right font-semibold">YTD</th>
