@@ -434,8 +434,33 @@ function ViewCard({
 // ---------------------------------------------------------------------------
 // Halaman
 // ---------------------------------------------------------------------------
+type PageStatus = "dev" | "final";
+const STATUS_KEY = "ui_kpi_rm_status";
+
+/** Tanda "Dalam pengembangan": spanduk + watermark diagonal berulang (tidak menghalangi klik). */
+function DevWatermark() {
+  return (
+    <>
+      <div className="mb-4 rounded-md border border-amber-400 bg-amber-100 px-4 py-2 text-sm font-semibold text-amber-900">
+        Halaman ini masih dalam pengembangan. Data dan tampilan dapat berubah.
+      </div>
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 z-40 flex -rotate-[25deg] scale-150 select-none flex-wrap content-center justify-center gap-x-16 gap-y-20 overflow-hidden"
+      >
+        {Array.from({ length: 60 }).map((_, i) => (
+          <span key={i} className="whitespace-nowrap text-3xl font-extrabold tracking-widest text-foreground/[0.07]">
+            DALAM PENGEMBANGAN
+          </span>
+        ))}
+      </div>
+    </>
+  );
+}
+
 function KpiRmPage() {
   const { isAdmin } = useRole();
+  const [status, setStatus] = useState<PageStatus>("dev");
   const [views, setViews] = useState<KpiView[]>([]);
   const [loading, setLoading] = useState(true);
   const [term, setTerm] = useState("");
@@ -467,6 +492,18 @@ function KpiRmPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    void supabase
+      .from("settings")
+      .select("value")
+      .eq("key", STATUS_KEY)
+      .maybeSingle()
+      .then(({ data }) => {
+        const v = (data as { value?: string } | null)?.value;
+        if (v === "final" || v === "dev") setStatus(v);
+      });
+  }, []);
+
   const filtered = useMemo(() => {
     const q = term.trim().toLowerCase();
     return q ? views.filter((v) => v.nama.toLowerCase().includes(q)) : views;
@@ -494,6 +531,23 @@ function KpiRmPage() {
     void load();
   }
 
+  async function changeStatus(next: PageStatus) {
+    const prev = status;
+    setStatus(next);
+    const { error } = await supabase
+      .from("settings")
+      .upsert(
+        { key: STATUS_KEY, value: next, updated_at: new Date().toISOString() },
+        { onConflict: "key" },
+      );
+    if (error) {
+      setStatus(prev);
+      toast.error(error.message);
+      return;
+    }
+    toast.success(next === "final" ? "Halaman ditandai Final." : "Halaman ditandai Dalam pengembangan.");
+  }
+
   async function confirmDelete() {
     if (!deleteTarget) return;
     const { error } = await db.from("kpi_rm_views").delete().eq("id", deleteTarget.id);
@@ -508,11 +562,23 @@ function KpiRmPage() {
 
   return (
     <AppLayout>
+      {status === "dev" && <DevWatermark />}
       <PageHeader
         title="KPI RM"
         description="Tabel KPI per Relationship Manager."
         actions={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {isAdmin && (
+              <select
+                value={status}
+                onChange={(e) => void changeStatus(e.target.value as PageStatus)}
+                className="h-9 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+                aria-label="Status halaman"
+              >
+                <option value="dev">Dalam pengembangan</option>
+                <option value="final">Final</option>
+              </select>
+            )}
             <Button
               variant="outline"
               disabled={filtered.length === 0}
