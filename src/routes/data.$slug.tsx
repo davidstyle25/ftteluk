@@ -73,7 +73,7 @@ function DataCategoryPage() {
   const [periods, setPeriods] = useState<Record<string, string>>({});
   const count = useCount(category?.table ?? "settings", tick);
 
-  // Untuk kategori hasil compare (MTD/YTD TAB & GIRO), tampilkan periode sumber
+  // Untuk kategori hasil compare (MTD/YTD/DTD TAB & GIRO), tampilkan periode sumber
   // pada header tgl1/tgl2 alih-alih label statis.
   useEffect(() => {
     const map: Record<string, { src: string; base: string }> = {
@@ -81,6 +81,8 @@ function DataCategoryPage() {
       ytd_tab: { src: "data_di319_data1", base: "data_di319_data3" },
       mtd_giro: { src: "data_di321_data2", base: "data_di321_data3" },
       ytd_giro: { src: "data_di321_data1", base: "data_di321_data3" },
+      dtd_tab: { src: "data_di319_data4", base: "data_di319_data3" },
+      dtd_giro: { src: "data_di321_data4", base: "data_di321_data3" },
     };
     const cfg = map[slug];
     if (!cfg) {

@@ -51,6 +51,18 @@ const JOBS = [
     source: "DATA1",
     target: "YTD TAB",
   },
+  {
+    kind: "dtd_giro",
+    title: "DI321 DATA3 DTD vs DATA4 KEMARIN → DTD GIRO",
+    source: "DATA4 KEMARIN",
+    target: "DTD GIRO",
+  },
+  {
+    kind: "dtd_tab",
+    title: "DI319 DATA3 DTD vs DATA4 KEMARIN → DTD TAB",
+    source: "DATA4 KEMARIN",
+    target: "DTD TAB",
+  },
 ];
 
 function CompareDataPage() {
