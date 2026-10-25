@@ -35,6 +35,16 @@ const NUMERIC = new Set(["decimal", "int", "bigint"]);
 // DI319 & DI321: kolom balance bertipe text -> urut angka lewat kolom turunan balance_num
 // (dibuat oleh supabase/07_di319_balance_sort.sql dan 08_di321_balance_sort.sql).
 const NUM_SORT_TABLE = /^data_di(319|321)_data[1-4]$/;
+// Tabel hasil Compare Data (MTD/YTD/DTD GIRO & TAB, Kenaikan/Penurunan): tgl1, tgl2, DELTA diurut angka
+const COMPARE_TABLE = /^data_(mtd|ytd|dtd)_(giro|tab)_(kenaikan|penurunan)$/;
+
+/** Nama kolom angka turunan untuk urut numerik; null bila kolom diurut biasa (teks). */
+function numericSortCol(table: string, col: string): string | null {
+  if (col === "balance" && NUM_SORT_TABLE.test(table)) return "balance_num";
+  if (COMPARE_TABLE.test(table) && (col === "tgl1" || col === "tgl2" || col === "delta"))
+    return `${col}_num`;
+  return null;
+}
 
 function toNumber(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
@@ -113,8 +123,7 @@ export function DataTableView({
         req = req.or(searchColumns.map((c) => `${c}.ilike."%${q}%"`).join(","));
       }
       if (sort) {
-        const numeric = sort.col === "balance" && NUM_SORT_TABLE.test(table);
-        req = req.order(numeric ? "balance_num" : sort.col, {
+        req = req.order(numericSortCol(table, sort.col) ?? sort.col, {
           ascending: sort.asc,
           nullsFirst: false,
         });
@@ -123,8 +132,8 @@ export function DataTableView({
       if (cancelled) return;
       if (error)
         toast.error(
-          sort?.col === "balance" && NUM_SORT_TABLE.test(table)
-            ? "Gagal memuat data. Jalankan SQL urut Balance (07_di319_balance_sort.sql / 08_di321_balance_sort.sql) di Supabase Studio."
+          sort && numericSortCol(table, sort.col)
+            ? "Gagal memuat data. Jalankan SQL urut angka di Supabase Studio (07/08 untuk Balance DI319/DI321, 11_compare_sort.sql untuk Kenaikan/Penurunan)."
             : "Gagal memuat data",
         );
       else {
@@ -211,6 +220,24 @@ export function DataTableView({
                   const v = e.target.value;
                   setPage(0);
                   setSort(v ? { col: "balance", asc: v === "asc" } : null);
+                }}
+                className="h-9 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+              >
+                <option value="">Urutan awal</option>
+                <option value="desc">Descending (terbesar → terkecil)</option>
+                <option value="asc">Ascending (terkecil → terbesar)</option>
+              </select>
+            </>
+          )}
+          {COMPARE_TABLE.test(table) && (
+            <>
+              <span>DELTA</span>
+              <select
+                value={sort?.col === "delta" ? (sort.asc ? "asc" : "desc") : ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setPage(0);
+                  setSort(v ? { col: "delta", asc: v === "asc" } : null);
                 }}
                 className="h-9 rounded-md border border-input bg-card px-2 text-sm text-foreground"
               >
