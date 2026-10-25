@@ -136,26 +136,75 @@ function DataCategoryPage() {
   // Viewer hanya punya akses penuh di kategori Pivot Multi; selainnya read-only.
   const canManage = isAdmin || slug === "pivot_multi";
 
-  const exportExcel = async () => {
-    // Server membatasi satu permintaan (default 1000 baris), jadi ambil bertahap per 1000 baris
-    // berurutan berdasarkan id sampai habis, supaya semua data ikut ter-export.
+  // Server membatasi satu permintaan (default 1000 baris), jadi ambil bertahap per 1000 baris
+  // berurutan berdasarkan id sampai habis, supaya semua data ikut ter-export.
+  const fetchAllRows = async (table: string): Promise<Record<string, unknown>[] | null> => {
     const all: Record<string, unknown>[] = [];
     const chunk = 1000;
     for (let i = 0; i < 1000; i++) {
       const { data, error } = await supabase
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from(category.table as any)
+        .from(table as any)
         .select("*")
         .order("id", { ascending: true })
         .range(i * chunk, i * chunk + chunk - 1);
       if (error) {
         toast.error(`Export gagal: ${error.message}`);
-        return;
+        return null;
       }
       const part = (data ?? []) as unknown as Record<string, unknown>[];
       all.push(...part);
       if (part.length < chunk) break;
     }
+    return all;
+  };
+
+  // Halaman hasil compare: satu file dengan dua sheet (Kenaikan & Penurunan), lengkap dengan DELTA.
+  const exportCompare = async () => {
+    const h1 = periods["tgl1"] || "tgl 1";
+    const h2 = periods["tgl2"] || "tgl 2";
+    const toNum = (v: unknown) => {
+      const n = Number(String(v ?? "").replace(/[^0-9.-]/g, ""));
+      return Number.isFinite(n) ? n : 0;
+    };
+    const sheets: { name: string; rows: Record<string, unknown>[] }[] = [];
+    for (const kind of ["kenaikan", "penurunan"] as const) {
+      const data = await fetchAllRows(`${category.table}_${kind}`);
+      if (!data) return;
+      sheets.push({
+        name: kind === "kenaikan" ? "Kenaikan" : "Penurunan",
+        rows: data.map((r) => ({
+          Norek: r["norek"] ?? "",
+          "Nama Nasabah": r["nama_nasabah"] ?? "",
+          [h1]: toNum(r["tgl1"]),
+          [h2]: toNum(r["tgl2"]),
+          DELTA: Math.round((toNum(r["tgl2"]) - toNum(r["tgl1"])) * 100) / 100,
+          "RM Pengelola": r["rm_pengelola"] ?? "",
+        })),
+      });
+    }
+    if (sheets.every((sh) => sh.rows.length === 0)) {
+      toast.error("Tidak ada data. Jalankan Compare Data lebih dulu.");
+      return;
+    }
+    const XLSX = await import("xlsx");
+    const wb = XLSX.utils.book_new();
+    for (const sh of sheets) {
+      const ws = XLSX.utils.json_to_sheet(sh.rows, {
+        header: ["Norek", "Nama Nasabah", h1, h2, "DELTA", "RM Pengelola"],
+      });
+      XLSX.utils.book_append_sheet(wb, ws, sh.name);
+    }
+    XLSX.writeFile(wb, `${slug}.xlsx`);
+  };
+
+  const exportExcel = async () => {
+    if (isCompareResult) {
+      await exportCompare();
+      return;
+    }
+    const all = await fetchAllRows(category.table);
+    if (!all) return;
     // Kolom internal balance_asli (balance sebelum dikali kurs) dan balance_num (untuk urut angka) tidak ikut di file.
     const rows = all.map((r) => {
       const { balance_asli: _asli, balance_num: _num, ...rest } = r;
