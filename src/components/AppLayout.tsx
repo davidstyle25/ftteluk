@@ -85,7 +85,7 @@ function NavLink({ item, active, sub }: { item: Item; active: boolean; sub?: boo
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const { user, loading, signOut } = useAuth();
-  const { isAdmin } = useRole();
+  const { isAdmin, isFullAdmin } = useRole();
   const navigate = useNavigate();
   const location = useRouterState({ select: (s) => s.location });
   const [open, setOpen] = useState(false);
@@ -143,6 +143,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
           {GROUPED.map((group) => {
             if (!isAdmin && HIDDEN_FOR_VIEWER.has(group.label)) return null;
+            // Administrator 2 tidak melihat menu RKA.
+            if (!isFullAdmin && group.label === "RKA") return null;
             const direct = VIEWER_DIRECT[group.label];
             if (!isAdmin && direct) {
               const target = group.items.find((i) => i.slug === direct);

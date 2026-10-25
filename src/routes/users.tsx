@@ -63,7 +63,7 @@ type FormState = {
   nama: string;
   username: string;
   password: string;
-  role: "admin" | "viewer";
+  role: "admin" | "admin2" | "viewer";
   active: boolean;
 };
 
@@ -78,7 +78,7 @@ const emptyForm: FormState = {
 
 function UsersPage() {
   const { role } = useRole();
-  const isAdmin = role === "admin";
+  const isAdmin = role === "admin"; // hanya administrator 1 yang mengelola user
   const list = useServerFn(listAppUsers);
   const create = useServerFn(createAppUser);
   const update = useServerFn(updateAppUser);
@@ -217,12 +217,12 @@ function UsersPage() {
                   <td className="px-4 py-3">
                     <span
                       className={`rounded-md border px-2 py-1 text-xs font-semibold ${
-                        u.role === "admin"
+                        u.role !== "viewer"
                           ? "border-primary/30 bg-primary/10 text-primary"
                           : "border-border bg-background text-foreground"
                       }`}
                     >
-                      {u.role === "admin" ? "administrator" : "viewer"}
+                      {u.role === "admin" ? "administrator" : u.role === "admin2" ? "administrator 2" : "viewer"}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -318,13 +318,14 @@ function UsersPage() {
                 <Label>Role</Label>
                 <Select
                   value={form.role}
-                  onValueChange={(v) => setForm({ ...form, role: v as "admin" | "viewer" })}
+                  onValueChange={(v) => setForm({ ...form, role: v as "admin" | "admin2" | "viewer" })}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="admin">administrator</SelectItem>
+                    <SelectItem value="admin2">administrator 2 (tanpa RKA)</SelectItem>
                     <SelectItem value="viewer">viewer</SelectItem>
                   </SelectContent>
                 </Select>

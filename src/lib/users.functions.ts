@@ -1,12 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireAuth, assertAdmin } from "@/lib/api/require-auth";
+import { requireAuth, assertFullAdmin } from "@/lib/api/require-auth";
 
 export type AppUserRow = {
   id: string;
   nama: string;
   username: string;
   email: string;
-  role: "admin" | "viewer";
+  role: "admin" | "admin2" | "viewer";
   active: boolean;
 };
 
@@ -19,7 +19,7 @@ function toEmail(username: string): string {
 export const listAppUsers = createServerFn({ method: "GET" })
   .middleware([requireAuth])
   .handler(async ({ context }): Promise<AppUserRow[]> => {
-    assertAdmin(context);
+    assertFullAdmin(context);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
@@ -42,7 +42,10 @@ export const listAppUsers = createServerFn({ method: "GET" })
             : email.split("@")[0]!,
         username: email.split("@")[0]!,
         email,
-        role: (roleMap.get(u.id) === "admin" ? "admin" : "viewer") as "admin" | "viewer",
+        role: (["admin", "admin2"].includes(roleMap.get(u.id) ?? "") ? roleMap.get(u.id) : "viewer") as
+          | "admin"
+          | "admin2"
+          | "viewer",
         active: !(u as unknown as { banned_until?: string | null }).banned_until,
       };
     });
@@ -51,10 +54,10 @@ export const listAppUsers = createServerFn({ method: "GET" })
 export const createAppUser = createServerFn({ method: "POST" })
   .middleware([requireAuth])
   .inputValidator(
-    (d: { nama: string; username: string; password: string; role: "admin" | "viewer" }) => d,
+    (d: { nama: string; username: string; password: string; role: "admin" | "admin2" | "viewer" }) => d,
   )
   .handler(async ({ data, context }) => {
-    assertAdmin(context);
+    assertFullAdmin(context);
     if (!data.username.trim() || data.password.length < 6) {
       throw new Error("Username wajib diisi dan password minimal 6 karakter.");
     }
@@ -81,12 +84,12 @@ export const updateAppUser = createServerFn({ method: "POST" })
       id: string;
       nama?: string;
       password?: string;
-      role?: "admin" | "viewer";
+      role?: "admin" | "admin2" | "viewer";
       active?: boolean;
     }) => d,
   )
   .handler(async ({ data, context }) => {
-    assertAdmin(context);
+    assertFullAdmin(context);
     if (data.password && data.password.length < 6) throw new Error("Password minimal 6 karakter.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -112,7 +115,7 @@ export const deleteAppUser = createServerFn({ method: "POST" })
   .middleware([requireAuth])
   .inputValidator((d: { id: string }) => d)
   .handler(async ({ data, context }) => {
-    assertAdmin(context);
+    assertFullAdmin(context);
     if (data.id === context.userId) throw new Error("Tidak bisa menghapus akun sendiri.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");

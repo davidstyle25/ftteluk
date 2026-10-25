@@ -64,7 +64,7 @@ function useCount(table: string, tick: number) {
 function DataCategoryPage() {
   const { slug } = Route.useParams();
   const category = CATEGORY_BY_SLUG.get(slug);
-  const { isAdmin } = useRole();
+  const { isAdmin, isFullAdmin, role: userRole } = useRole();
   const [tick, setTick] = useState(0);
   const [tab, setTab] = useState<"data" | "pivot">("data");
   const [confirmWipe, setConfirmWipe] = useState(false);
@@ -108,6 +108,15 @@ function DataCategoryPage() {
       cancelled = true;
     };
   }, [slug]);
+
+  // Administrator 2 tidak boleh membuka halaman RKA (menunggu role selesai dimuat).
+  if (category?.group === "RKA" && userRole && !isFullAdmin) {
+    return (
+      <AppLayout>
+        <p className="text-sm text-muted-foreground">Anda tidak memiliki akses ke menu RKA.</p>
+      </AppLayout>
+    );
+  }
 
   if (!category) {
     return (

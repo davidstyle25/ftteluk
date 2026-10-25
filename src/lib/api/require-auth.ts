@@ -9,6 +9,8 @@ export type AuthContext = {
   userId: string;
   email: string;
   isAdmin: boolean;
+  /** true hanya untuk administrator 1 (role "admin"), bukan administrator 2. */
+  isFullAdmin: boolean;
   supabase: ReturnType<typeof createClient<Database>>;
 };
 
@@ -64,10 +66,17 @@ export const requireAuth = createMiddleware({ type: "function" }).server(async (
     _role: "admin",
   });
 
+  const { data: roleRows } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", data.claims.sub);
+  const isFullAdmin = (roleRows ?? []).some((r) => String(r.role) === "admin");
+
   const context: AuthContext = {
     userId: data.claims.sub,
     email: String(data.claims["email"] ?? ""),
     isAdmin: Boolean(isAdmin),
+    isFullAdmin,
     supabase,
   };
   return next({ context });
@@ -75,4 +84,9 @@ export const requireAuth = createMiddleware({ type: "function" }).server(async (
 
 export function assertAdmin(context: { isAdmin: boolean }) {
   if (!context.isAdmin) throw new Error("Forbidden: hanya admin.");
+}
+
+/** Khusus administrator 1 (kelola user). */
+export function assertFullAdmin(context: { isFullAdmin: boolean }) {
+  if (!context.isFullAdmin) throw new Error("Forbidden: hanya administrator utama.");
 }
