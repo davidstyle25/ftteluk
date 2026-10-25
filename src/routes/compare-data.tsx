@@ -1,12 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { GitCompare } from "lucide-react";
+import { Download, GitCompare } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { AppLayout } from "@/components/AppLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { useRole } from "@/lib/use-role";
+import { exportAllCompare } from "@/lib/compare-export";
 
 export const Route = createFileRoute("/compare-data")({
   head: () => ({
@@ -69,6 +70,18 @@ function CompareDataPage() {
   const { isAdmin } = useRole();
   const [running, setRunning] = useState<string | null>(null);
 
+  const [exporting, setExporting] = useState(false);
+  const exportAll = async () => {
+    setExporting(true);
+    try {
+      const r = await exportAllCompare();
+      toast.success(`Export selesai — ${r.sheets} sheet, ${r.rows} baris.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export gagal.");
+    }
+    setExporting(false);
+  };
+
   const run = async (kind: string) => {
     if (!isAdmin) {
       toast.error("Hanya admin yang dapat menjalankan compare data.");
@@ -96,6 +109,20 @@ function CompareDataPage() {
       />
 
       <div className="max-w-3xl space-y-4">
+        <div className="card-elevated px-6 py-5">
+          <h2 className="flex items-center gap-2 text-base font-bold">
+            <Download className="size-4 text-primary" />
+            Export Data Excel MTD YTD
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Semua hasil compare (MTD, YTD, DTD — TAB dan GIRO) diexport dalam satu file Excel, satu
+            sheet per kategori: blok TURUN (DELTA ≤ -100 juta) dan NAIK (DELTA ≥ 100 juta).
+          </p>
+          <Button className="mt-4" disabled={exporting} onClick={exportAll}>
+            <Download className="mr-2 size-4" />
+            {exporting ? "Mengexport…" : "Export Data Excel MTD YTD"}
+          </Button>
+        </div>
         {JOBS.map((j) => (
           <div key={j.kind} className="card-elevated px-6 py-5">
             <h2 className="flex items-center gap-2 text-base font-bold">
