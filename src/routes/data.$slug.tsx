@@ -167,14 +167,26 @@ function DataCategoryPage() {
   };
 
   const wipe = async () => {
-    const { error } = await supabase
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .from(category.table as any)
-      .delete()
-      .gte("id", 0);
+    // Halaman hasil compare (MTD/YTD/DTD GIRO & TAB) menampilkan tabel Kenaikan & Penurunan,
+    // jadi yang dihapus adalah kedua tabel itu (tabel induknya memang kosong).
+    const targets = isCompareResult
+      ? [`${category.table}_kenaikan`, `${category.table}_penurunan`]
+      : [category.table];
+    let failed: string | null = null;
+    for (const t of targets) {
+      const { error } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .from(t as any)
+        .delete()
+        .gte("id", 0);
+      if (error) {
+        failed = error.message;
+        break;
+      }
+    }
     setConfirmWipe(false);
-    if (error) {
-      toast.error(error.message);
+    if (failed) {
+      toast.error(failed);
       return;
     }
     toast.success("Semua data dihapus.");
