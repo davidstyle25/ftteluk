@@ -159,42 +159,92 @@ function DataCategoryPage() {
     return all;
   };
 
-  // Halaman hasil compare: satu file dengan dua sheet (Kenaikan & Penurunan), lengkap dengan DELTA.
+  // Halaman hasil compare: satu sheet seperti file nominatif MTD/YTD.
+  // Blok atas "TURUN" (DELTA <= -100 juta, terbesar dulu), blok bawah "NAIK" (DELTA >= 100 juta).
   const exportCompare = async () => {
+    const LIMIT = 100_000_000;
     const h1 = periods["tgl1"] || "tgl 1";
     const h2 = periods["tgl2"] || "tgl 2";
+    const jenis = /tab$/.test(slug) ? "TABUNGAN" : "GIRO";
     const toNum = (v: unknown) => {
       const n = Number(String(v ?? "").replace(/[^0-9.-]/g, ""));
       return Number.isFinite(n) ? n : 0;
     };
-    const sheets: { name: string; rows: Record<string, unknown>[] }[] = [];
-    for (const kind of ["kenaikan", "penurunan"] as const) {
+    type Item = { norek: string; nama: string; v1: number; v2: number; rm: string };
+    const load = async (kind: "kenaikan" | "penurunan"): Promise<Item[] | null> => {
       const data = await fetchAllRows(`${category.table}_${kind}`);
-      if (!data) return;
-      sheets.push({
-        name: kind === "kenaikan" ? "Kenaikan" : "Penurunan",
-        rows: data.map((r) => ({
-          Norek: r["norek"] ?? "",
-          "Nama Nasabah": r["nama_nasabah"] ?? "",
-          [h1]: toNum(r["tgl1"]),
-          [h2]: toNum(r["tgl2"]),
-          DELTA: Math.round((toNum(r["tgl2"]) - toNum(r["tgl1"])) * 100) / 100,
-          "RM Pengelola": r["rm_pengelola"] ?? "",
-        })),
-      });
-    }
-    if (sheets.every((sh) => sh.rows.length === 0)) {
-      toast.error("Tidak ada data. Jalankan Compare Data lebih dulu.");
+      if (!data) return null;
+      return data.map((r) => ({
+        norek: String(r["norek"] ?? ""),
+        nama: String(r["nama_nasabah"] ?? "").trim(),
+        v1: toNum(r["tgl1"]),
+        v2: toNum(r["tgl2"]),
+        rm: String(r["rm_pengelola"] ?? ""),
+      }));
+    };
+    const up = await load("kenaikan");
+    const down = await load("penurunan");
+    if (!up || !down) return;
+    const delta = (x: Item) => Math.round((x.v2 - x.v1) * 100) / 100;
+    const turun = down.filter((x) => delta(x) <= -LIMIT).sort((x, y) => delta(x) - delta(y));
+    const naik = up.filter((x) => delta(x) >= LIMIT).sort((x, y) => delta(y) - delta(x));
+    if (turun.length === 0 && naik.length === 0) {
+      toast.error(
+        up.length + down.length === 0
+          ? "Tidak ada data. Jalankan Compare Data lebih dulu."
+          : "Tidak ada rekening dengan DELTA di atas 100 juta.",
+      );
       return;
     }
+
     const XLSX = await import("xlsx");
-    const wb = XLSX.utils.book_new();
-    for (const sh of sheets) {
-      const ws = XLSX.utils.json_to_sheet(sh.rows, {
-        header: ["Norek", "Nama Nasabah", h1, h2, "DELTA", "RM Pengelola"],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ws: Record<string, any> = {};
+    const merges: { s: { r: number; c: number }; e: { r: number; c: number } }[] = [];
+    const NUM_FMT = '_-* #,##0.00_-;\\-* #,##0.00_-;_-* "-"??_-;_-@_-';
+    const put = (r: number, c: number, cell: Record<string, unknown>) => {
+      ws[XLSX.utils.encode_cell({ r: r - 1, c: c - 1 })] = cell;
+    };
+    const str = (v: string) => ({ t: "s", v });
+    const num = (v: number, f?: string) => ({ t: "n", v, z: NUM_FMT, ...(f ? { f } : {}) });
+
+    let row = 1;
+    const block = (title: string, items: Item[]) => {
+      put(row, 1, str(title));
+      merges.push({ s: { r: row - 1, c: 0 }, e: { r: row - 1, c: 6 } });
+      row += 1;
+      ["NO", "Norek", "NAMA NASABAH", h1, h2, "DELTA", "RM PENGELOLA"].forEach((h, i) =>
+        put(row, i + 1, str(h)),
+      );
+      row += 1;
+      const first = row;
+      items.forEach((x, i) => {
+        put(row, 1, { t: "n", v: i + 1 });
+        put(row, 2, str(x.norek));
+        put(row, 3, str(x.nama));
+        put(row, 4, num(x.v1));
+        put(row, 5, num(x.v2));
+        put(row, 6, num(delta(x), `E${row}-D${row}`));
+        put(row, 7, str(x.rm));
+        row += 1;
       });
-      XLSX.utils.book_append_sheet(wb, ws, sh.name);
-    }
+      const last = row - 1;
+      put(row, 1, str("Total"));
+      if (items.length > 0) {
+        put(row, 4, num(items.reduce((a, x) => a + x.v1, 0), `SUM(D${first}:D${last})`));
+        put(row, 5, num(items.reduce((a, x) => a + x.v2, 0), `SUM(E${first}:E${last})`));
+        put(row, 6, num(items.reduce((a, x) => a + delta(x), 0), `SUM(F${first}:F${last})`));
+      }
+      row += 3; // dua baris kosong antar blok
+    };
+    block(`${jenis} TURUN KC`, turun);
+    block(`${jenis} NAIK KC`, naik);
+
+    ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: row - 3, c: 6 } });
+    ws["!merges"] = merges;
+    ws["!cols"] = [{ wch: 5 }, { wch: 20 }, { wch: 28 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 32 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, category.label.slice(0, 31));
     XLSX.writeFile(wb, `${slug}.xlsx`);
   };
 
