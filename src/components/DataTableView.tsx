@@ -45,16 +45,23 @@ function numericSortCol(table: string, col: string): string | null {
   return null;
 }
 
-function toNumber(value: unknown) {
+/**
+ * Teks -> angka. Default: format Indonesia (titik = ribuan, koma = desimal).
+ * dotDecimal: titik = desimal, sama seperti Compare Data di database (tgl1/tgl2 disimpan "236591212.2").
+ */
+function toNumber(value: unknown, dotDecimal = false) {
   if (value === null || value === undefined || value === "") return null;
-  const n = Number(String(value).replace(/\./g, "").replace(",", "."));
+  const raw = String(value);
+  const n = dotDecimal
+    ? Number(raw.replace(/[^0-9.-]/g, ""))
+    : Number(raw.replace(/\./g, "").replace(",", "."));
   return Number.isFinite(n) ? n : null;
 }
 
-function formatCell(value: unknown, type: DataColumn["type"]) {
+function formatCell(value: unknown, type: DataColumn["type"], dotDecimal = false) {
   if (value === null || value === undefined || value === "") return "";
   if (NUMERIC.has(type)) {
-    const n = toNumber(value);
+    const n = toNumber(value, dotDecimal);
     return n === null ? String(value) : n.toLocaleString("id-ID");
   }
   // Tanggal tanpa jam: "2026/8/31 0:00" -> "2026/8/31"
@@ -154,6 +161,7 @@ export function DataTableView({
   // Tabel Kenaikan/Penurunan: kolom RM Pengelola dipindah ke setelah DELTA.
   const afterDelta =
     showDelta && COMPARE_TABLE.test(table) ? columns.filter((c) => c.field === "rm_pengelola") : [];
+  const isCompareTable = COMPARE_TABLE.test(table);
   const mainCols = afterDelta.length ? columns.filter((c) => c.field !== "rm_pengelola") : columns;
 
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -358,7 +366,7 @@ export function DataTableView({
             <tbody>
               {rows.map((r, i) => {
                 const delta = showDelta
-                  ? (toNumber(r["tgl2"]) ?? 0) - (toNumber(r["tgl1"]) ?? 0)
+                  ? Math.round(((toNumber(r["tgl2"], true) ?? 0) - (toNumber(r["tgl1"], true) ?? 0)) * 100) / 100
                   : 0;
                 return (
                   <tr key={i} className="border-t transition-colors hover:bg-muted/40">
@@ -371,7 +379,7 @@ export function DataTableView({
                           NUMERIC.has(c.type) && "text-right tabular-nums",
                         )}
                       >
-                        {formatCell(r[c.field], c.type)}
+                        {formatCell(r[c.field], c.type, isCompareTable)}
                       </td>
                     ))}
                     {showDelta && (
