@@ -243,7 +243,7 @@ export function EdcQrisView({ cfg, title }: { cfg: Record<"EDC" | "QRIS", CatCfg
           return e || (await fetchPosisi(cfg.QRIS.tglTables[i]!));
         }),
       );
-      setPeriods({ tgl1: pos[0]!, tgl2: pos[1]!, tgl3: pos[2]!, tgl4: pos[3]! });
+      setPeriods({ tgl1: cfg.EDC.countProduktifTgl1 ? pos[2]! : pos[0]!, tgl2: pos[1]!, tgl3: pos[2]!, tgl4: pos[3]! });
 
       // Hasil hitungan tersimpan (diisi admin lewat tombol) -> tampil instan
       const { data: cacheRow } = await supabase
@@ -414,7 +414,7 @@ export function EdcQrisView({ cfg, title }: { cfg: Record<"EDC" | "QRIS", CatCfg
     try {
       const cnt = idx === 0 ? cfgRef.countProduktifTgl1 : undefined;
       const byName = cnt
-        ? await countProduktifByName(cfgRef.tglTables[0]!, cnt.nameColumn, cnt.statusColumn)
+        ? await countProduktifByName(cfgRef.tglTables[2]!, cnt.nameColumn, cnt.statusColumn)
         : null;
       const sums = byName ? null : await sumByPn(cfgRef.tglTables[idx]!, cfgRef.pnColumn, cfgRef.valueColumn);
       const next = rowsRef.current.map((r) => {
