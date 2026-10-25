@@ -151,6 +151,11 @@ export function DataTableView({
     onChanged?.();
   };
 
+  // Tabel Kenaikan/Penurunan: kolom RM Pengelola dipindah ke setelah DELTA.
+  const afterDelta =
+    showDelta && COMPARE_TABLE.test(table) ? columns.filter((c) => c.field === "rm_pengelola") : [];
+  const mainCols = afterDelta.length ? columns.filter((c) => c.field !== "rm_pengelola") : columns;
+
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const from = total === 0 ? 0 : page * pageSize + 1;
   const to = Math.min(total, page * pageSize + rows.length);
@@ -283,7 +288,7 @@ export function DataTableView({
             <thead className="bg-muted/60">
               <tr>
                 <th className="whitespace-nowrap px-4 py-3 text-left font-semibold">NO</th>
-                {columns.map((c) => (
+                {mainCols.map((c) => (
                   <th key={c.field} className="whitespace-nowrap px-4 py-3 text-left font-semibold">
                     {COMPARE_TABLE.test(table) ? (
                       <span>{headerOverrides?.[c.field] ?? c.label}</span>
@@ -340,6 +345,11 @@ export function DataTableView({
                     </button>
                   </th>
                 )}
+                {afterDelta.map((c) => (
+                  <th key={c.field} className="whitespace-nowrap px-4 py-3 text-left font-semibold">
+                    {headerOverrides?.[c.field] ?? c.label}
+                  </th>
+                ))}
                 {canEdit && (
                   <th className="whitespace-nowrap px-4 py-3 text-right font-semibold">Actions</th>
                 )}
@@ -353,7 +363,7 @@ export function DataTableView({
                 return (
                   <tr key={i} className="border-t transition-colors hover:bg-muted/40">
                     <td className="px-4 py-3 text-muted-foreground">{page * pageSize + i + 1}</td>
-                    {columns.map((c) => (
+                    {mainCols.map((c) => (
                       <td
                         key={c.field}
                         className={cn(
@@ -374,6 +384,11 @@ export function DataTableView({
                         {delta.toLocaleString("id-ID")}
                       </td>
                     )}
+                    {afterDelta.map((c) => (
+                      <td key={c.field} className="whitespace-nowrap px-4 py-3">
+                        {formatCell(r[c.field], c.type)}
+                      </td>
+                    ))}
                     {canEdit && (
                       <td className="whitespace-nowrap px-4 py-3 text-right">
                         <div className="flex justify-end gap-1">
