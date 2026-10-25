@@ -35,14 +35,13 @@ const NUMERIC = new Set(["decimal", "int", "bigint"]);
 // DI319 & DI321: kolom balance bertipe text -> urut angka lewat kolom turunan balance_num
 // (dibuat oleh supabase/07_di319_balance_sort.sql dan 08_di321_balance_sort.sql).
 const NUM_SORT_TABLE = /^data_di(319|321)_data[1-4]$/;
-// Tabel hasil Compare Data (MTD/YTD/DTD GIRO & TAB, Kenaikan/Penurunan): tgl1, tgl2, DELTA diurut angka
+// Tabel hasil Compare Data (MTD/YTD/DTD GIRO & TAB, Kenaikan/Penurunan): hanya DELTA yang bisa diurutkan
 const COMPARE_TABLE = /^data_(mtd|ytd|dtd)_(giro|tab)_(kenaikan|penurunan)$/;
 
 /** Nama kolom angka turunan untuk urut numerik; null bila kolom diurut biasa (teks). */
 function numericSortCol(table: string, col: string): string | null {
   if (col === "balance" && NUM_SORT_TABLE.test(table)) return "balance_num";
-  if (COMPARE_TABLE.test(table) && (col === "tgl1" || col === "tgl2" || col === "delta"))
-    return `${col}_num`;
+  if (COMPARE_TABLE.test(table) && col === "delta") return "delta_num";
   return null;
 }
 
@@ -286,6 +285,9 @@ export function DataTableView({
                 <th className="whitespace-nowrap px-4 py-3 text-left font-semibold">NO</th>
                 {columns.map((c) => (
                   <th key={c.field} className="whitespace-nowrap px-4 py-3 text-left font-semibold">
+                    {COMPARE_TABLE.test(table) ? (
+                      <span>{headerOverrides?.[c.field] ?? c.label}</span>
+                    ) : (
                     <button
                       type="button"
                       className="inline-flex items-center gap-1"
@@ -308,6 +310,7 @@ export function DataTableView({
                         <ChevronsUpDown className="size-3.5 text-muted-foreground" />
                       )}
                     </button>
+                    )}
                   </th>
                 ))}
                 {showDelta && (
