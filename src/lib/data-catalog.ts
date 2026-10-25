@@ -1260,7 +1260,6 @@ export const DATA_CATEGORIES: DataCategory[] = [
     noAdd: false,
     columns: [
       { field: "rm", label: "RM", type: "string" },
-      { field: "jg", label: "JG", type: "string" },
       { field: "jan", label: "Jan", type: "decimal" },
       { field: "feb", label: "Feb", type: "decimal" },
       { field: "mar", label: "Mar", type: "decimal" },
@@ -1286,7 +1285,6 @@ export const DATA_CATEGORIES: DataCategory[] = [
     noAdd: false,
     columns: [
       { field: "rm", label: "RM", type: "string" },
-      { field: "jg", label: "JG", type: "string" },
       { field: "jan", label: "Jan", type: "decimal" },
       { field: "feb", label: "Feb", type: "decimal" },
       { field: "mar", label: "Mar", type: "decimal" },
@@ -1312,7 +1310,6 @@ export const DATA_CATEGORIES: DataCategory[] = [
     noAdd: false,
     columns: [
       { field: "rm", label: "RM", type: "string" },
-      { field: "jg", label: "JG", type: "string" },
       { field: "jan", label: "Jan", type: "decimal" },
       { field: "feb", label: "Feb", type: "decimal" },
       { field: "mar", label: "Mar", type: "decimal" },
@@ -1338,7 +1335,6 @@ export const DATA_CATEGORIES: DataCategory[] = [
     noAdd: false,
     columns: [
       { field: "rm", label: "Nama RM", type: "string" },
-      { field: "jg", label: "JG", type: "string" },
       { field: "jan", label: "Jan", type: "decimal" },
       { field: "feb", label: "Feb", type: "decimal" },
       { field: "mar", label: "Mar", type: "decimal" },
@@ -1364,7 +1360,6 @@ export const DATA_CATEGORIES: DataCategory[] = [
     noAdd: false,
     columns: [
       { field: "rm", label: "Nama RM", type: "string" },
-      { field: "jg", label: "JG", type: "string" },
       { field: "jan", label: "Jan", type: "decimal" },
       { field: "feb", label: "Feb", type: "decimal" },
       { field: "mar", label: "Mar", type: "decimal" },
@@ -1390,7 +1385,6 @@ export const DATA_CATEGORIES: DataCategory[] = [
     noAdd: false,
     columns: [
       { field: "rm", label: "Nama RM", type: "string" },
-      { field: "jg", label: "JG", type: "string" },
       { field: "jan", label: "Jan", type: "decimal" },
       { field: "feb", label: "Feb", type: "decimal" },
       { field: "mar", label: "Mar", type: "decimal" },
@@ -1416,7 +1410,6 @@ export const DATA_CATEGORIES: DataCategory[] = [
     noAdd: false,
     columns: [
       { field: "rm", label: "Nama RM", type: "string" },
-      { field: "jg", label: "JG", type: "string" },
       { field: "jan", label: "Jan", type: "decimal" },
       { field: "feb", label: "Feb", type: "decimal" },
       { field: "mar", label: "Mar", type: "decimal" },
@@ -1442,7 +1435,6 @@ export const DATA_CATEGORIES: DataCategory[] = [
     noAdd: false,
     columns: [
       { field: "rm", label: "RM", type: "string" },
-      { field: "jg", label: "JG", type: "string" },
       { field: "jan", label: "Jan", type: "decimal" },
       { field: "feb", label: "Feb", type: "decimal" },
       { field: "mar", label: "Mar", type: "decimal" },
@@ -1468,7 +1460,6 @@ export const DATA_CATEGORIES: DataCategory[] = [
     noAdd: false,
     columns: [
       { field: "rm", label: "RM", type: "string" },
-      { field: "jg", label: "JG", type: "string" },
       { field: "jan", label: "Jan", type: "decimal" },
       { field: "feb", label: "Feb", type: "decimal" },
       { field: "mar", label: "Mar", type: "decimal" },
