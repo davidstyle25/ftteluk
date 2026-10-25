@@ -78,7 +78,7 @@ export type ProduktifVariant = "edc" | "qris";
 // EDC: produktif = status_edc "Produktif". QRIS: produktif = status "AKTIF".
 const VARIANTS = {
   edc: { table: "data_edc_data3", field: "status_edc", match: "produktif", key: EDC_PRODUK_KEY, def: DEFAULT_CFG, totalLabel: "TOTAL" },
-  qris: { table: "data_qris", field: "status", match: "aktif", key: QRIS_PRODUK_KEY, def: QRIS_DEFAULT_CFG, totalLabel: "KONSOLIDASI" },
+  qris: { table: "data_qris_data3", field: "status", match: "aktif", key: QRIS_PRODUK_KEY, def: QRIS_DEFAULT_CFG, totalLabel: "KONSOLIDASI" },
 } as const;
 
 async function loadStats(variant: ProduktifVariant): Promise<EdcStats> {

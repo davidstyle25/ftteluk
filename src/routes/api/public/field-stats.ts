@@ -11,7 +11,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const CATEGORY_TABLE: Record<string, string> = {
   edc: "data_edc_data3",
-  qris: "data_qris",
+  qris: "data_qris_data3",
 };
 
 const json = (body: unknown, status = 200) =>

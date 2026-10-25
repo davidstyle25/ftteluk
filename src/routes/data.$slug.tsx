@@ -71,8 +71,13 @@ function DataCategoryPage() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
   const [periods, setPeriods] = useState<Record<string, string>>({});
-  // Menu EDC (tanpa submenu) menampilkan data dari EDC → DATA3 DTD.
-  const dataTable = slug === "edc" ? "data_edc_data3" : (category?.table ?? "settings");
+  // Menu EDC dan QRIS (tanpa submenu) menampilkan data dari DATA3 DTD masing-masing.
+  const dataTable =
+    slug === "edc"
+      ? "data_edc_data3"
+      : slug === "qris"
+        ? "data_qris_data3"
+        : (category?.table ?? "settings");
   const count = useCount(dataTable, tick);
 
   // Untuk kategori hasil compare (MTD/YTD/DTD TAB & GIRO), tampilkan periode sumber
