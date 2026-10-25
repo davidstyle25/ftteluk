@@ -26,7 +26,7 @@ const HEAD_BG = [
   "#A9E8E3", // POPULASI
   "#FFFF00", // RKA
   "#00B050", // SUDAH PRODUKTIF
-  "#FFE0A3", // EDC/QRIS PRODUKTIF tgl terbaru
+  "#FFE0A3", // EDC PRODUKTIF tgl terbaru
   "#8496B0", // TOTAL PRODUKTIF
   "#FFFF00", // GAP THD RKA
   "#FFFF00", // % THD RKA
@@ -38,7 +38,7 @@ const HEAD_BG = [
 const fmt = (v: number, max = 0, min = 0) =>
   v.toLocaleString("en-US", { minimumFractionDigits: min, maximumFractionDigits: max });
 
-// Statistik (sama dengan kartu di atas tabel): total data, jumlah produktif/aktif, dan tanggal posisi data.
+// Statistik EDC (sama dengan kartu di atas tabel): Total EDC, EDC Produktif, dan tanggal posisi data.
 type EdcStats = {
   total: number;
   produktif: number;
@@ -77,7 +77,7 @@ export type ProduktifVariant = "edc" | "qris";
 
 // EDC: produktif = status_edc "Produktif". QRIS: produktif = status "AKTIF".
 const VARIANTS = {
-  edc: { table: "data_edc", field: "status_edc", match: "produktif", key: EDC_PRODUK_KEY, def: DEFAULT_CFG, totalLabel: "TOTAL" },
+  edc: { table: "data_edc_data3", field: "status_edc", match: "produktif", key: EDC_PRODUK_KEY, def: DEFAULT_CFG, totalLabel: "TOTAL" },
   qris: { table: "data_qris", field: "status", match: "aktif", key: QRIS_PRODUK_KEY, def: QRIS_DEFAULT_CFG, totalLabel: "KONSOLIDASI" },
 } as const;
 
@@ -93,7 +93,7 @@ async function loadStats(variant: ProduktifVariant): Promise<EdcStats> {
   const produktif = statusRows
     .filter((r) => (r.value ?? "").trim().toLowerCase() === v.match)
     .reduce((sum, r) => sum + Number(r.count), 0);
-  // Tanggal posisi = nilai posisi yang paling banyak muncul (data biasanya satu tanggal saja).
+  // Tanggal posisi = nilai posisi yang paling banyak muncul (data EDC biasanya satu tanggal saja).
   const posRows = ((pos.data ?? []) as Counts).filter((r) => (r.value ?? "").trim() !== "");
   posRows.sort((a, b) => Number(b.count) - Number(a.count));
   return {
@@ -212,7 +212,7 @@ function ResultCells({ c }: { c: EdcCalc }) {
   );
 }
 
-/** Tabel EDC / QRIS PRODUKTIF: judul & isi bisa diedit admin, kolom hasil dihitung otomatis. */
+/** Tabel EDC PRODUKTIF: judul & isi bisa diedit admin, kolom hasil dihitung otomatis. */
 export function EdcProduktifTable({
   canEdit,
   variant = "edc",
@@ -255,8 +255,7 @@ export function EdcProduktifTable({
     };
   }, [V]);
 
-  // Baris "otomatis": Populasi & Sudah Produktif dari statistik data.
-  // QRIS: baris Cabang/Mikro memakai Total QRIS Cabang/Mikro dan QRIS Cabang/Mikro Produktif.
+  // Baris "otomatis": Populasi = Total EDC, Sudah Produktif = EDC Produktif (dari statistik data EDC).
   const effRows = useMemo(
     () =>
       cfg.rows.map((r) => {
@@ -302,7 +301,7 @@ export function EdcProduktifTable({
       toast.error(error.message);
       return;
     }
-    toast.success("Tabel disimpan.");
+    toast.success("Tabel EDC Produktif disimpan.");
     setDirty(false);
   }
 
@@ -451,12 +450,10 @@ export function EdcProduktifTable({
 
       {canEdit && (
         <p className="border-t px-4 py-2 text-xs text-muted-foreground">
-          Judul, nama kolom, dan angka bisa diedit. Baris dengan ikon petir (biru): Populasi dan
-          Sudah Produktif diambil otomatis dari statistik data (QRIS: baris Cabang/Mikro dari Total QRIS
-          Cabang/Mikro dan QRIS Cabang/Mikro Produktif); klik ikon petir untuk mengisinya manual. Tulis{" "}
-          {"{posisi}"} (dengan kurung kurawal) di judul kolom agar tanggalnya otomatis dari kolom Posisi
-          data; klik di luar kotak untuk melihat hasilnya. Kolom Total, Gap, %, dan Aspirasi dihitung
-          otomatis. Jangan lupa klik Simpan.
+          Judul, nama kolom, dan angka bisa diedit. Baris dengan ikon petir (biru): Populasi = Total data (EDC/QRIS) dan
+          Sudah Produktif = jumlah Produktif/AKTIF diambil otomatis dari statistik data EDC; klik ikon petir untuk
+          mengisinya manual. Tulis {"{posisi}"} (dengan kurung kurawal) di judul kolom agar tanggalnya otomatis dari
+          kolom Posisi data EDC; klik di luar kotak untuk melihat hasilnya. Kolom Total, Gap, %, dan Aspirasi dihitung otomatis. Jangan lupa klik Simpan.
         </p>
       )}
     </section>

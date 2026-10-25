@@ -10,7 +10,7 @@ import { createFileRoute } from "@tanstack/react-router";
 // jadi RLS tetap berlaku.
 
 const CATEGORY_TABLE: Record<string, string> = {
-  edc: "data_edc",
+  edc: "data_edc_data3",
   qris: "data_qris",
 };
 

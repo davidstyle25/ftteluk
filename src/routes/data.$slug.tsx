@@ -71,7 +71,9 @@ function DataCategoryPage() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
   const [periods, setPeriods] = useState<Record<string, string>>({});
-  const count = useCount(category?.table ?? "settings", tick);
+  // Menu EDC (tanpa submenu) menampilkan data dari EDC → DATA3 DTD.
+  const dataTable = slug === "edc" ? "data_edc_data3" : (category?.table ?? "settings");
+  const count = useCount(dataTable, tick);
 
   // Untuk kategori hasil compare (MTD/YTD/DTD TAB & GIRO), tampilkan periode sumber
   // pada header tgl1/tgl2 alih-alih label statis.
@@ -172,7 +174,7 @@ function DataCategoryPage() {
     };
     type Item = { norek: string; nama: string; v1: number; v2: number; rm: string };
     const load = async (kind: "kenaikan" | "penurunan"): Promise<Item[] | null> => {
-      const data = await fetchAllRows(`${category.table}_${kind}`);
+      const data = await fetchAllRows(`${dataTable}_${kind}`);
       if (!data) return null;
       return data.map((r) => ({
         norek: String(r["norek"] ?? ""),
@@ -253,7 +255,7 @@ function DataCategoryPage() {
       await exportCompare();
       return;
     }
-    const all = await fetchAllRows(category.table);
+    const all = await fetchAllRows(dataTable);
     if (!all) return;
     // Kolom internal balance_asli (balance sebelum dikali kurs) dan balance_num (untuk urut angka) tidak ikut di file.
     const rows = all.map((r) => {
@@ -269,8 +271,8 @@ function DataCategoryPage() {
     // Halaman hasil compare (MTD/YTD/DTD GIRO & TAB) menampilkan tabel Kenaikan & Penurunan,
     // jadi yang dihapus adalah kedua tabel itu (tabel induknya memang kosong).
     const targets = isCompareResult
-      ? [`${category.table}_kenaikan`, `${category.table}_penurunan`]
-      : [category.table];
+      ? [`${dataTable}_kenaikan`, `${dataTable}_penurunan`]
+      : [dataTable];
     let failed: string | null = null;
     for (const t of targets) {
       const { error } = await supabase
@@ -343,7 +345,7 @@ function DataCategoryPage() {
             />
           </div>
           {showValas && (
-            <ValasGiroCard table={category.table} isAdmin={isAdmin} onCompared={() => setTick((t) => t + 1)} />
+            <ValasGiroCard table={dataTable} isAdmin={isAdmin} onCompared={() => setTick((t) => t + 1)} />
           )}
         </div>
       )}
@@ -382,7 +384,7 @@ function DataCategoryPage() {
           <DataTableView
             key={`${slug}-turun-${tick}`}
             title="Penurunan"
-            table={`${category.table}_penurunan`}
+            table={`${dataTable}_penurunan`}
             columns={CATEGORY_BY_SLUG.get(`${slug}_penurunan`)?.columns ?? []}
             showDelta
             canEdit={canManage}
@@ -392,7 +394,7 @@ function DataCategoryPage() {
           <DataTableView
             key={`${slug}-naik-${tick}`}
             title="Kenaikan"
-            table={`${category.table}_kenaikan`}
+            table={`${dataTable}_kenaikan`}
             columns={CATEGORY_BY_SLUG.get(`${slug}_kenaikan`)?.columns ?? []}
             showDelta
             canEdit={canManage}
@@ -403,7 +405,7 @@ function DataCategoryPage() {
       ) : (
         <DataTableView
           key={`${slug}-${tick}`}
-          table={category.table}
+          table={dataTable}
           columns={category.columns}
           canEdit={canManage && !category.readonly}
           canAdd={canManage && !category.readonly && !category.noAdd}
@@ -414,7 +416,7 @@ function DataCategoryPage() {
       <ExcelUploadDialog
         open={uploadOpen}
         onOpenChange={setUploadOpen}
-        table={category.table}
+        table={dataTable}
         label={category.label}
         onImported={() => setTick((t) => t + 1)}
       />
@@ -424,7 +426,7 @@ function DataCategoryPage() {
           mode="csv"
           open={csvOpen}
           onOpenChange={setCsvOpen}
-          table={category.table}
+          table={dataTable}
           label={category.label}
           onImported={() => setTick((t) => t + 1)}
         />
