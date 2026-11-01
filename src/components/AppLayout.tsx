@@ -179,7 +179,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <p className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
             System
           </p>
-          {SYSTEM.map((item) => (
+          {SYSTEM.filter((item) => isAdmin || item.to !== "/compare-data").map((item) => (
             <NavLink key={item.to} item={item} active={isActive(item)} />
           ))}
         </nav>

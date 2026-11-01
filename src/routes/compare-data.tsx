@@ -67,7 +67,7 @@ const JOBS = [
 ];
 
 function CompareDataPage() {
-  const { isAdmin } = useRole();
+  const { isAdmin, role } = useRole();
   const [running, setRunning] = useState<string | null>(null);
 
   const [exporting, setExporting] = useState(false);
@@ -100,6 +100,15 @@ function CompareDataPage() {
       `Compare selesai — kenaikan ${res?.kenaikan ?? 0}, penurunan ${res?.penurunan ?? 0}.`,
     );
   };
+
+  // Viewer tidak boleh membuka halaman ini (menunggu role selesai dimuat).
+  if (role && !isAdmin) {
+    return (
+      <AppLayout>
+        <p className="text-sm text-muted-foreground">Anda tidak memiliki akses ke menu Compare Data.</p>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>
