@@ -12,6 +12,7 @@ import { ProduktivitasRmftView } from "@/components/ProduktivitasRmftView";
 import { AverageGiroView } from "@/components/AverageGiroView";
 import { EdcQrisView, PROD_CFG, SV_CFG } from "@/components/EdcQrisView";
 import { TimeSeriesView } from "@/components/TimeSeriesView";
+import { OlahDataNeraca } from "@/components/OlahDataNeraca";
 import { CategoryStats } from "@/components/CategoryStats";
 import { EdcProduktifTable } from "@/components/EdcProduktifTable";
 import { ValasGiroCard } from "@/components/ValasGiroCard";
@@ -350,7 +351,7 @@ function DataCategoryPage() {
             />
           </div>
           {showValas && (
-            <ValasGiroCard table={dataTable} isAdmin={isAdmin} onCompared={() => setTick((t) => t + 1)} />
+            <ValasGiroCard table={dataTable} label={category.label} isAdmin={isAdmin} onCompared={() => setTick((t) => t + 1)} />
           )}
         </div>
       )}
@@ -374,7 +375,10 @@ function DataCategoryPage() {
       )}
 
       {isTimeSeries ? (
-        <TimeSeriesView />
+        <>
+          <TimeSeriesView />
+          <OlahDataNeraca isAdmin={isAdmin} />
+        </>
       ) : category.csvUpload && tab === "pivot" ? (
         <PivotMutasiView refreshKey={tick} />
       ) : isProduktivitas ? (
