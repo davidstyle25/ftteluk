@@ -252,16 +252,41 @@ export function OlahDataNeraca({ isAdmin }: { isAdmin: boolean }) {
     monthLabel = BULAN[m - 1]!;
   }
   const val = (d: string | null) => (d ? store.days[d] : undefined);
+  const [showRkaInput, setShowRkaInput] = useState(false);
+
+  // Kolom yang tidak punya data disembunyikan.
+  const recent = [0, 1, 2].map((i) => last3[last3.length - 3 + i] ?? null).filter((d): d is string => d !== null);
+  const dateCols: { d: string; label: string }[] = [];
+  if (yearEnd) dateCols.push({ d: yearEnd, label: yearEndLabel });
+  if (monthEnd) dateCols.push({ d: monthEnd, label: monthEndLabel });
+  for (const d of recent) if (d !== yearEnd && d !== monthEnd) dateCols.push({ d, label: dayLabel(d) });
+  const hasRkaM = LINES.some((l) => lineValue(l, store.rka[rkaMonthKey]) !== null);
+  const hasRkaY = LINES.some((l) => lineValue(l, store.rka[rkaYearKey]) !== null);
+  const showRkaM = hasRkaM || (isAdmin && showRkaInput);
+  const showRkaY = hasRkaY || (isAdmin && showRkaInput);
+  const showYtd = !!yearEnd;
+  const showMtd = !!monthEnd;
+  const showH1 = !!prev;
+  const nRka = (showRkaM ? 1 : 0) + (showRkaY ? 1 : 0);
+  const nThd = (hasRkaM ? 1 : 0) + (hasRkaY ? 1 : 0);
 
   const th = "border border-border px-2 py-1.5 text-center text-xs font-bold whitespace-nowrap";
   const td = "border border-border px-2 py-1 text-right text-sm tabular-nums whitespace-nowrap";
+  const thBlue = `${th} bg-blue-200 text-blue-950`;
+  const thOrange = `${th} bg-orange-400 text-orange-950`;
+  const thYellow = `${th} bg-yellow-300 text-yellow-950`;
 
   return (
     <section className="mt-8">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-bold">Olah Data Neraca</h2>
         {isAdmin && (
-          <div>
+          <div className="flex flex-wrap gap-2">
+            {latest && !hasRkaM && !hasRkaY && (
+              <Button size="sm" variant="outline" onClick={() => setShowRkaInput((v) => !v)}>
+                {showRkaInput ? "Sembunyikan Input RKA" : "Input RKA"}
+              </Button>
+            )}
             <input
               ref={fileRef}
               type="file"
@@ -290,44 +315,34 @@ export function OlahDataNeraca({ isAdmin }: { isAdmin: boolean }) {
               <thead>
                 <tr>
                   <th rowSpan={2} className={`${th} bg-white`} colSpan={2} />
-                  <th rowSpan={2} className={`${th} bg-blue-200 text-blue-950`}>{yearEndLabel}</th>
-                  <th rowSpan={2} className={`${th} bg-blue-200 text-blue-950`}>{monthEndLabel}</th>
-                  {[0, 1, 2].map((i) => {
-                    const d = last3[last3.length - 3 + i] ?? null;
-                    return (
-                      <th key={i} rowSpan={2} className={`${th} bg-blue-200 text-blue-950`}>
-                        {d ? dayLabel(d) : "-"}
-                      </th>
-                    );
-                  })}
-                  <th colSpan={2} className={`${th} bg-orange-400 text-orange-950`}>RKA</th>
-                  {["YTD", "MTD", "H-1"].map((h) => (
-                    <th key={h} rowSpan={2} className={`${th} bg-yellow-300 text-yellow-950`}>{h}</th>
+                  {dateCols.map((c) => (
+                    <th key={c.d} rowSpan={2} className={thBlue}>{c.label}</th>
                   ))}
-                  <th colSpan={2} className={`${th} bg-yellow-300 text-yellow-950`}>THD RKA</th>
-                  <th colSpan={2} className={`${th} bg-yellow-300 text-yellow-950`}>% RKA</th>
+                  {nRka > 0 && <th colSpan={nRka} className={thOrange}>RKA</th>}
+                  {showYtd && <th rowSpan={2} className={thYellow}>YTD</th>}
+                  {showMtd && <th rowSpan={2} className={thYellow}>MTD</th>}
+                  {showH1 && <th rowSpan={2} className={thYellow}>H-1</th>}
+                  {nThd > 0 && <th colSpan={nThd} className={thYellow}>THD RKA</th>}
+                  {nThd > 0 && <th colSpan={nThd} className={thYellow}>% RKA</th>}
                 </tr>
                 <tr>
-                  <th className={`${th} bg-orange-400 text-orange-950`}>{monthLabel}</th>
-                  <th className={`${th} bg-orange-400 text-orange-950`}>DES</th>
-                  <th className={`${th} bg-yellow-300 text-yellow-950`}>{monthLabel}</th>
-                  <th className={`${th} bg-yellow-300 text-yellow-950`}>DES</th>
-                  <th className={`${th} bg-yellow-300 text-yellow-950`}>{monthLabel}</th>
-                  <th className={`${th} bg-yellow-300 text-yellow-950`}>DES</th>
+                  {showRkaM && <th className={thOrange}>{monthLabel}</th>}
+                  {showRkaY && <th className={thOrange}>DES</th>}
+                  {hasRkaM && <th className={thYellow}>{monthLabel}</th>}
+                  {hasRkaY && <th className={thYellow}>DES</th>}
+                  {hasRkaM && <th className={thYellow}>{monthLabel}</th>}
+                  {hasRkaY && <th className={thYellow}>DES</th>}
                 </tr>
               </thead>
               <tbody>
                 {LINES.map((ln) => {
                   const total = ln.kind === "total";
-                  const cols = [yearEnd, monthEnd, ...[0, 1, 2].map((i) => last3[last3.length - 3 + i] ?? null)].map(
-                    (d) => lineValue(ln, val(d)),
-                  );
                   const cur = lineValue(ln, val(latest));
                   const before = lineValue(ln, val(prev));
                   const rkaM = lineValue(ln, store.rka[rkaMonthKey]);
                   const rkaY = lineValue(ln, store.rka[rkaYearKey]);
-                  const ytd = sub(cur, cols[0] ?? null);
-                  const mtd = sub(cur, cols[1] ?? null);
+                  const ytd = sub(cur, lineValue(ln, val(yearEnd)));
+                  const mtd = sub(cur, lineValue(ln, val(monthEnd)));
                   const h1 = sub(cur, before);
                   const thdM = sub(cur, rkaM);
                   const thdY = sub(cur, rkaY);
@@ -359,17 +374,18 @@ export function OlahDataNeraca({ isAdmin }: { isAdmin: boolean }) {
                         {total ? ln.label : ""}
                       </td>
                       {!total && <td className="border border-border bg-white px-2 py-1 text-sm">{ln.label}</td>}
-                      {cols.map((c, i) => (
-                        <td key={i} className={`${td} ${dateBg}`}>{fmt(c)}</td>
+                      {dateCols.map((c) => (
+                        <td key={c.d} className={`${td} ${dateBg}`}>{fmt(lineValue(ln, val(c.d)))}</td>
                       ))}
-                      <td className={`${td} ${total ? "bg-orange-300 font-bold" : "bg-sky-50"}`}>{rkaCell(rkaMonthKey, rkaM)}</td>
-                      <td className={`${td} ${total ? "bg-orange-300 font-bold" : "bg-sky-50"}`}>{rkaCell(rkaYearKey, rkaY)}</td>
-                      {[ytd, mtd, h1, thdM, thdY].map((x, i) => (
-                        <td key={i} className={`${td} ${colorDelta(x)}`}>{fmt(x)}</td>
-                      ))}
-                      {[pctM, pctY].map((x, i) => (
-                        <td key={i} className={`${td} font-semibold ${colorPct(x)}`}>{fmtPct(x)}</td>
-                      ))}
+                      {showRkaM && <td className={`${td} ${dateBg}`}>{rkaCell(rkaMonthKey, rkaM)}</td>}
+                      {showRkaY && <td className={`${td} ${dateBg}`}>{rkaCell(rkaYearKey, rkaY)}</td>}
+                      {showYtd && <td className={`${td} ${colorDelta(ytd)}`}>{fmt(ytd)}</td>}
+                      {showMtd && <td className={`${td} ${colorDelta(mtd)}`}>{fmt(mtd)}</td>}
+                      {showH1 && <td className={`${td} ${colorDelta(h1)}`}>{fmt(h1)}</td>}
+                      {hasRkaM && <td className={`${td} ${colorDelta(thdM)}`}>{fmt(thdM)}</td>}
+                      {hasRkaY && <td className={`${td} ${colorDelta(thdY)}`}>{fmt(thdY)}</td>}
+                      {hasRkaM && <td className={`${td} font-semibold ${colorPct(pctM)}`}>{fmtPct(pctM)}</td>}
+                      {hasRkaY && <td className={`${td} font-semibold ${colorPct(pctY)}`}>{fmtPct(pctY)}</td>}
                     </tr>
                   );
                 })}
@@ -377,8 +393,8 @@ export function OlahDataNeraca({ isAdmin }: { isAdmin: boolean }) {
             </table>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            Dalam juta rupiah. YTD = tanggal terakhir − {yearEndLabel}; MTD = tanggal terakhir − {monthEndLabel}; H-1 = tanggal
-            terakhir − tanggal sebelumnya. RKA diisi admin pada baris TAB / GIRO / DEPO.
+            Dalam juta rupiah. Kolom yang belum punya data tidak ditampilkan. YTD = tanggal terakhir − {yearEndLabel}; MTD =
+            tanggal terakhir − {monthEndLabel}; H-1 = tanggal terakhir − tanggal sebelumnya.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-muted-foreground">Tanggal tersimpan:</span>
