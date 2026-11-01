@@ -164,7 +164,7 @@ const colorDelta = (n: number | null) =>
 const colorPct = (n: number | null) =>
   n === null ? "" : n < 1 ? "bg-red-300/80 text-red-950" : "bg-green-300/80 text-green-950";
 
-export function OlahDataNeraca({ isAdmin }: { isAdmin: boolean }) {
+export function OlahDataNeraca({ canEdit }: { canEdit: boolean }) {
   const [store, setStore] = useState<Store>(emptyStore());
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -262,8 +262,8 @@ export function OlahDataNeraca({ isAdmin }: { isAdmin: boolean }) {
   for (const d of recent) if (d !== yearEnd && d !== monthEnd) dateCols.push({ d, label: dayLabel(d) });
   const hasRkaM = LINES.some((l) => lineValue(l, store.rka[rkaMonthKey]) !== null);
   const hasRkaY = LINES.some((l) => lineValue(l, store.rka[rkaYearKey]) !== null);
-  const showRkaM = hasRkaM || (isAdmin && showRkaInput);
-  const showRkaY = hasRkaY || (isAdmin && showRkaInput);
+  const showRkaM = hasRkaM || (canEdit && showRkaInput);
+  const showRkaY = hasRkaY || (canEdit && showRkaInput);
   const showYtd = !!yearEnd;
   const showMtd = !!monthEnd;
   const showH1 = !!prev;
@@ -280,7 +280,7 @@ export function OlahDataNeraca({ isAdmin }: { isAdmin: boolean }) {
     <section className="mt-8">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-bold">Olah Data Neraca</h2>
-        {isAdmin && (
+        {canEdit && (
           <div className="flex flex-wrap gap-2">
             {latest && !hasRkaM && !hasRkaY && (
               <Button size="sm" variant="outline" onClick={() => setShowRkaInput((v) => !v)}>
@@ -306,7 +306,7 @@ export function OlahDataNeraca({ isAdmin }: { isAdmin: boolean }) {
         <p className="text-sm text-muted-foreground">Memuat…</p>
       ) : !latest ? (
         <p className="rounded-lg border bg-card px-4 py-6 text-sm text-muted-foreground">
-          Belum ada data. {isAdmin ? "Klik Import Data GI405 dan pilih file Excel GI405." : "Admin perlu mengimport data GI405 lebih dulu."}
+          Belum ada data. {canEdit ? "Klik Import Data GI405 dan pilih file Excel GI405." : "Admin perlu mengimport data GI405 lebih dulu."}
         </p>
       ) : (
         <>
@@ -350,7 +350,7 @@ export function OlahDataNeraca({ isAdmin }: { isAdmin: boolean }) {
                   const pctY = cur !== null && rkaY ? cur / rkaY : null;
                   const dateBg = total ? "bg-orange-300 font-bold" : "bg-sky-50";
                   const rkaCell = (period: string, v: number | null) =>
-                    !total && isAdmin ? (
+                    !total && canEdit ? (
                       <input
                         key={`${period}-${v}`}
                         defaultValue={v === null ? "" : Math.round(v).toLocaleString("en-US")}
@@ -401,7 +401,7 @@ export function OlahDataNeraca({ isAdmin }: { isAdmin: boolean }) {
             {dates.map((d) => (
               <span key={d} className="inline-flex items-center gap-1 rounded-full border bg-muted/40 px-2 py-0.5">
                 {d.split("-").reverse().join("/")}
-                {isAdmin && (
+                {canEdit && (
                   <button
                     type="button"
                     aria-label={`Hapus ${d}`}

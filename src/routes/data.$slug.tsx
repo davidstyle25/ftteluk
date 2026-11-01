@@ -377,7 +377,7 @@ function DataCategoryPage() {
       {isTimeSeries ? (
         <>
           <TimeSeriesView />
-          <OlahDataNeraca isAdmin={isAdmin} />
+          <OlahDataNeraca canEdit />
         </>
       ) : category.csvUpload && tab === "pivot" ? (
         <PivotMutasiView refreshKey={tick} />
