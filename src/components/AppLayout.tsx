@@ -8,6 +8,7 @@ import {
   ScrollText,
   Settings,
   GitCompare,
+  HardDrive,
   Target,
   ChevronDown,
   Database,
@@ -56,6 +57,7 @@ const SYSTEM: Item[] = [
   { label: "Activity Logs", to: "/logs", icon: ScrollText },
   { label: "Settings", to: "/settings", icon: Settings },
   { label: "Compare Data", to: "/compare-data", icon: GitCompare },
+  { label: "Drive", to: "/drive", icon: HardDrive },
 ];
 
 function NavLink({ item, active, sub }: { item: Item; active: boolean; sub?: boolean }) {

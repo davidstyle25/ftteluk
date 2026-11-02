@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CompareDataRouteImport } from './routes/compare-data'
+import { Route as DriveRouteImport } from './routes/drive'
 import { Route as LinksRouteImport } from './routes/links'
 import { Route as KpiRmRouteImport } from './routes/kpi-rm'
 import { Route as LoginRouteImport } from './routes/login'
@@ -29,6 +30,11 @@ const IndexRoute = IndexRouteImport.update({
 const CompareDataRoute = CompareDataRouteImport.update({
   id: '/compare-data',
   path: '/compare-data',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DriveRoute = DriveRouteImport.update({
+  id: '/drive',
+  path: '/drive',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LinksRoute = LinksRouteImport.update({
@@ -80,6 +86,7 @@ const ApiPublicTimeSeriesRoute = ApiPublicTimeSeriesRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/compare-data': typeof CompareDataRoute
+  '/drive': typeof DriveRoute
   '/links': typeof LinksRoute
   '/kpi-rm': typeof KpiRmRoute
   '/login': typeof LoginRoute
@@ -93,6 +100,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/compare-data': typeof CompareDataRoute
+  '/drive': typeof DriveRoute
   '/links': typeof LinksRoute
   '/kpi-rm': typeof KpiRmRoute
   '/login': typeof LoginRoute
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/compare-data': typeof CompareDataRoute
+  '/drive': typeof DriveRoute
   '/links': typeof LinksRoute
   '/kpi-rm': typeof KpiRmRoute
   '/login': typeof LoginRoute
@@ -122,6 +131,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/compare-data'
+    | '/drive'
     | '/links'
     | '/kpi-rm'
     | '/login'
@@ -135,6 +145,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/compare-data'
+    | '/drive'
     | '/links'
     | '/kpi-rm'
     | '/login'
@@ -148,6 +159,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/compare-data'
+    | '/drive'
     | '/links'
     | '/kpi-rm'
     | '/login'
@@ -162,6 +174,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CompareDataRoute: typeof CompareDataRoute
+  DriveRoute: typeof DriveRoute
   LinksRoute: typeof LinksRoute
   KpiRmRoute: typeof KpiRmRoute
   LoginRoute: typeof LoginRoute
@@ -187,6 +200,13 @@ declare module '@tanstack/react-router' {
       path: '/compare-data'
       fullPath: '/compare-data'
       preLoaderRoute: typeof CompareDataRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/drive': {
+      id: '/drive'
+      path: '/drive'
+      fullPath: '/drive'
+      preLoaderRoute: typeof DriveRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/links': {
@@ -258,6 +278,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CompareDataRoute: CompareDataRoute,
+  DriveRoute: DriveRoute,
   LinksRoute: LinksRoute,
   KpiRmRoute: KpiRmRoute,
   LoginRoute: LoginRoute,
