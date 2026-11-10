@@ -68,6 +68,8 @@ function DataCategoryPage() {
   const { isAdmin, isFullAdmin, role: userRole } = useRole();
   const [tick, setTick] = useState(0);
   const [tab, setTab] = useState<"data" | "pivot">("data");
+  // PIVOT MULTI punya 5 unit terpisah (PIVOT MULTI 1..5), masing-masing tabel sendiri.
+  const [unit, setUnit] = useState(1);
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
@@ -78,8 +80,11 @@ function DataCategoryPage() {
       ? "data_edc_data3"
       : slug === "qris"
         ? "data_qris_data3"
-        : (category?.table ?? "settings");
+        : slug === "pivot_multi" && unit > 1
+          ? `data_pivot_multi_${unit}`
+          : (category?.table ?? "settings");
   const count = useCount(dataTable, tick);
+  const pageLabel = slug === "pivot_multi" ? `PIVOT MULTI ${unit}` : (category?.label ?? "");
 
   // Untuk kategori hasil compare (MTD/YTD/DTD TAB & GIRO), tampilkan periode sumber
   // pada header tgl1/tgl2 alih-alih label statis.
@@ -252,7 +257,7 @@ function DataCategoryPage() {
     ws["!merges"] = merges;
     ws["!cols"] = [{ wch: 5 }, { wch: 20 }, { wch: 28 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 32 }];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, category.label.slice(0, 31));
+    XLSX.utils.book_append_sheet(wb, ws, pageLabel.slice(0, 31));
     XLSX.writeFile(wb, `${slug}.xlsx`);
   };
 
@@ -303,7 +308,7 @@ function DataCategoryPage() {
   return (
     <AppLayout>
       <PageHeader
-        title={category.label}
+        title={pageLabel}
         description="Manage data records for this category."
         actions={
           isTimeSeries ? null : (
@@ -346,14 +351,40 @@ function DataCategoryPage() {
         >
           <div className={showValas ? "grid gap-4 sm:grid-cols-2" : "contents"}>
             <StatCard
-              label={`Jumlah Data · ${category.label}`}
+              label={`Jumlah Data · ${pageLabel}`}
               value={count === null ? "…" : count.toLocaleString("id-ID")}
             />
           </div>
           {showValas && (
-            <ValasGiroCard table={dataTable} label={category.label} isAdmin={isAdmin} onCompared={() => setTick((t) => t + 1)} />
+            <ValasGiroCard table={dataTable} label={pageLabel} isAdmin={isAdmin} onCompared={() => setTick((t) => t + 1)} />
           )}
         </div>
+      )}
+
+      {slug === "pivot_multi" && (
+        <nav
+          aria-label="Pilih PIVOT MULTI"
+          className="mb-4 flex gap-1 overflow-x-auto border-b"
+        >
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => {
+                setUnit(n);
+                setTab("data");
+              }}
+              className={cn(
+                "-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm transition-colors",
+                unit === n
+                  ? "border-primary font-semibold text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              PIVOT MULTI {n}
+            </button>
+          ))}
+        </nav>
       )}
 
       {category.csvUpload && (
@@ -380,7 +411,7 @@ function DataCategoryPage() {
           <OlahDataNeraca canEdit />
         </>
       ) : category.csvUpload && tab === "pivot" ? (
-        <PivotMutasiView refreshKey={tick} />
+        <PivotMutasiView key={dataTable} table={dataTable} refreshKey={tick} />
       ) : isProduktivitas ? (
         <>
           <ProduktivitasRmftView key={`prod-${tick}`} canEdit={canManage} />
@@ -413,7 +444,7 @@ function DataCategoryPage() {
         </div>
       ) : (
         <DataTableView
-          key={`${slug}-${tick}`}
+          key={`${dataTable}-${tick}`}
           table={dataTable}
           columns={category.columns}
           canEdit={canManage && !category.readonly}
@@ -426,7 +457,7 @@ function DataCategoryPage() {
         open={uploadOpen}
         onOpenChange={setUploadOpen}
         table={dataTable}
-        label={category.label}
+        label={pageLabel}
         onImported={() => setTick((t) => t + 1)}
       />
 
@@ -436,7 +467,7 @@ function DataCategoryPage() {
           open={csvOpen}
           onOpenChange={setCsvOpen}
           table={dataTable}
-          label={category.label}
+          label={pageLabel}
           onImported={() => setTick((t) => t + 1)}
         />
       )}
@@ -444,7 +475,7 @@ function DataCategoryPage() {
       <AlertDialog open={confirmWipe} onOpenChange={setConfirmWipe}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Hapus semua data {category.label}?</AlertDialogTitle>
+            <AlertDialogTitle>Hapus semua data {pageLabel}?</AlertDialogTitle>
             <AlertDialogDescription>
               Seluruh baris pada kategori ini akan dihapus permanen.
             </AlertDialogDescription>

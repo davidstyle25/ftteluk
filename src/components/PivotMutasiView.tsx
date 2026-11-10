@@ -31,7 +31,13 @@ function toNum(v: string | null) {
 const fmt = (n: number) => n.toLocaleString("id-ID");
 
 
-export function PivotMutasiView({ refreshKey = 0 }: { refreshKey?: number }) {
+export function PivotMutasiView({
+  table = "data_pivot_multi",
+  refreshKey = 0,
+}: {
+  table?: string;
+  refreshKey?: number;
+}) {
   const [raw, setRaw] = useState<Raw[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
@@ -47,7 +53,8 @@ export function PivotMutasiView({ refreshKey = 0 }: { refreshKey?: number }) {
       const chunk = 1000;
       for (let i = 0; i < 100; i++) {
         const { data, error } = await supabase
-          .from("data_pivot_multi")
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .from(table as any)
           .select("nama, tanggal_transaksi, mutasi_debet, mutasi_kredit")
           .order("id", { ascending: true })
           .range(i * chunk, i * chunk + chunk - 1);
@@ -66,7 +73,7 @@ export function PivotMutasiView({ refreshKey = 0 }: { refreshKey?: number }) {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey]);
+  }, [refreshKey, table]);
 
   const pivot = useMemo(() => {
     const map = new Map<string, { nama: string; debet: number; kredit: number }>();
